@@ -69,9 +69,23 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function searchProducts(game: string, q: string, filter: 'all' | 'card' | 'sealed') {
-  return call<{ results: CatalogProduct[]; sets: SetHit[]; loadedSet: string | null; note: string | null }>('/api/search', {
+  return call<{
+    results: CatalogProduct[]
+    sets: SetHit[]
+    loadedSet: string | null
+    note: string | null
+    remainingSets: number
+    shouldContinue: boolean
+  }>('/api/search', {
     method: 'POST',
     body: JSON.stringify({ game, q, filter }),
+  })
+}
+
+export function picturesFor(items: { id: string; title: string; detail: string }[]) {
+  return call<{ items: { id: string; imageUrl: string; name: string; setName: string | null }[] }>('/api/pictures', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
   })
 }
 

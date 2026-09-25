@@ -2,8 +2,10 @@ import { gameByKey } from '../shared/games.js'
 import { asNumber, sleep, tcg, utcDay } from './tcg.js'
 
 const STOP = new Set(['the', 'of', 'a', 'an', 'and', 'for', 'set', 'tcg', 'card', 'cards', 'from', 'with'])
+const CONDITIONS = new Set(['nm', 'lp', 'mp', 'hp', 'dmg', 'near', 'mint', 'played', 'unopened'])
 const FRESH_MS = 20 * 60 * 60 * 1000
 const GROUPS_FRESH_MS = 24 * 60 * 60 * 1000
+const SMALL_GAME_SETS = 45
 
 function httpError(message, status) {
   const error = new Error(message)
@@ -38,8 +40,8 @@ function isSealed(product) {
   return !number && !rarity
 }
 
-function searchText(product, setName, number, rarity) {
-  return [product.name, product.cleanName, setName, number, rarity].filter(Boolean).join(' ').toLowerCase()
+function searchText(product, setName, number, rarity, subtypes = []) {
+  return [product.name, product.cleanName, setName, number, rarity, ...subtypes].filter(Boolean).join(' ').toLowerCase()
 }
 
 async function chunkUpsert(client, table, rows, onConflict, size = 400) {
@@ -177,10 +179,18 @@ export async function ingestGroup(client, game, group, extraKeys = new Set()) {
   const now = new Date().toISOString()
   const today = utcDay()
   const products = new Map()
+  const subtypesByProduct = new Map()
+  for (const price of pricesPayload.results || []) {
+    if (!price.subTypeName) continue
+    const list = subtypesByProduct.get(price.productId) || []
+    list.push(price.subTypeName)
+    subtypesByProduct.set(price.productId, list)
+  }
   for (const product of productsPayload.results || []) {
     const number = extended(product, 'Number', 'Card Number')
     const rarity = extended(product, 'Rarity')
     const sealed = isSealed(product)
+    const subtypes = subtypesByProduct.get(product.productId) || []
     products.set(product.productId, {
       product_id: product.productId,
       category_id: game.categoryId,
@@ -193,7 +203,7 @@ export async function ingestGroup(client, game, group, extraKeys = new Set()) {
       number,
       rarity,
       sealed,
-      search_text: searchText(product, group.name, number, rarity),
+      search_text: searchText(product, group.name, number, rarity, subtypes),
       updated_at: now,
     })
   }
@@ -255,10 +265,49 @@ async function searchRows(client, game, parts, filter) {
     p_game: game.key,
     p_tokens: used,
     p_sealed: filter === 'sealed' ? true : filter === 'card' ? false : null,
-    p_limit: 60,
+    p_limit: 200,
   })
   if (error) throw new Error(error.message)
   return data || []
+}
+
+async function indexedGroupIds(client, game) {
+  const ids = new Set()
+  let from = 0
+  while (true) {
+    const { data, error } = await client
+      .from('catalog_products')
+      .select('group_id')
+      .eq('game_key', game.key)
+      .range(from, from + 999)
+    if (error) throw new Error(error.message)
+    for (const row of data || []) ids.add(row.group_id)
+    if (!data || data.length < 1000) break
+    from += 1000
+  }
+  return ids
+}
+
+async function indexMoreSets(client, game, groups) {
+  const have = await indexedGroupIds(client, game)
+  const missing = groups
+    .filter((group) => !have.has(group.group_id))
+    .sort((a, b) => (b.published_on || '').localeCompare(a.published_on || ''))
+  const batch = missing.slice(0, groups.length <= SMALL_GAME_SETS ? 8 : 4)
+  for (const group of batch) {
+    try {
+      await ingestIfStale(client, game, group)
+    } catch (error) {
+      console.error(`Could not load ${group.name}:`, error instanceof Error ? error.message : error)
+    }
+    await sleep(100)
+  }
+  const remainingSets = Math.max(0, missing.length - batch.length)
+  return {
+    remainingSets,
+    scanned: batch.length,
+    shouldContinue: batch.length > 0 && remainingSets > 0 && groups.length <= SMALL_GAME_SETS,
+  }
 }
 
 function scoreRow(row, parts) {
@@ -300,6 +349,9 @@ export async function search(client, body) {
     const loaded = await ingestIfStale(client, game, match)
     if (loaded || match) loadedSet = match.name
   }
+  const progress = parts.length && groups.length <= SMALL_GAME_SETS
+    ? await indexMoreSets(client, game, groups)
+    : { remainingSets: 0, scanned: 0, shouldContinue: false }
   const rows = parts.length ? await searchRows(client, game, parts, filter) : []
   const priceMap = await pricesFor(client, rows.map((row) => row.product_id))
   const wantsSealed = parts.some((token) => ['box', 'case', 'pack', 'etb', 'tin', 'bundle', 'sealed'].includes(token))
@@ -313,7 +365,7 @@ export async function search(client, body) {
       }
       return a.row.name.localeCompare(b.row.name)
     })
-    .slice(0, 40)
+    .slice(0, 200)
     .map(({ row }) => shapeProduct(row, priceMap.get(row.product_id)))
 
   const sets = results.length < 5
@@ -330,14 +382,104 @@ export async function search(client, body) {
         }))
     : []
 
+  let note = null
+  if (progress.shouldContinue) note = 'Checking the rest of the sets for that word…'
+  else if (results.length === 0 && parts.length) note = 'Nothing matched yet. Open the set, or search the set name and the card together.'
+  else if (!progress.shouldContinue && progress.remainingSets > 0 && results.length > 0) {
+    note = 'Showing matches from the sets loaded so far. Add the set name to pull in an older set.'
+  }
+
   return {
     results,
     sets,
     loadedSet,
-    note: results.length === 0 && parts.length
-      ? 'Nothing matched yet. Open the set, or search the set name and the card together.'
-      : null,
+    note,
+    remainingSets: progress.remainingSets,
+    shouldContinue: progress.shouldContinue,
   }
+}
+
+const pictureGroups = new Map()
+
+async function groupsForMatching(client) {
+  const cached = pictureGroups.get('all')
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.rows
+  const { data, error } = await client.from('catalog_groups').select('game_key, name, abbreviation, group_id, category_id, published_on, is_supplemental')
+  if (error) throw new Error(error.message)
+  const rows = data || []
+  pictureGroups.set('all', { at: Date.now(), rows })
+  return rows
+}
+
+function nameTokens(parts, groups) {
+  const setTokens = new Set()
+  for (const group of groups) {
+    for (const token of tokensOf(`${group.name || ''} ${group.abbreviation || ''}`)) setTokens.add(token)
+  }
+  return parts.filter((token) => token.length >= 4 && !CONDITIONS.has(token) && !setTokens.has(token))
+}
+
+export async function picturesFor(client, body) {
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, 40).map((item) => ({
+    id: String(item.id || ''),
+    title: String(item.title || ''),
+    detail: String(item.detail || ''),
+  })).filter((item) => item.id && item.title)
+  if (!items.length) return { items: [] }
+
+  const groups = await groupsForMatching(client)
+  const blob = items.map((item) => `${item.title} ${item.detail}`).join(' ')
+  const mentioned = new Set()
+  for (const token of tokensOf(blob)) {
+    for (const group of groups) {
+      const name = group.name.toLowerCase()
+      const abbreviation = (group.abbreviation || '').toLowerCase()
+      if ((token.length >= 4 && name.includes(token)) || abbreviation === token) mentioned.add(group.game_key)
+    }
+  }
+  for (const gameKey of mentioned) {
+    const game = gameByKey(gameKey)
+    const gameGroups = groups.filter((group) => group.game_key === gameKey)
+    if (!game || gameGroups.length > SMALL_GAME_SETS) continue
+    let guard = 0
+    let progress = { shouldContinue: true }
+    while (progress.shouldContinue && guard < 4) {
+      progress = await indexMoreSets(client, game, gameGroups)
+      guard += 1
+    }
+  }
+
+  const pictures = []
+  for (const item of items) {
+    const parts = tokensOf(`${item.title} ${item.detail}`).filter((token) => !CONDITIONS.has(token))
+    const needed = nameTokens(parts, groups)
+    if (!needed.length) continue
+    let query = client.from('catalog_products').select('name, set_name, image_url, number, search_text').limit(25)
+    for (const token of needed.slice(0, 4)) query = query.ilike('search_text', `%${token}%`)
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    let best = null
+    for (const row of data || []) {
+      const name = row.name.toLowerCase()
+      if (!needed.every((token) => name.includes(token))) continue
+      if (!row.image_url) continue
+      let score = needed.reduce((sum, token) => sum + token.length, 0)
+      const setName = (row.set_name || '').toLowerCase()
+      for (const token of parts) {
+        if (setName.includes(token)) score += 3
+        if (name.includes(token)) score += 1
+      }
+      if (!best || score > best.score) best = { row, score }
+    }
+    if (!best) continue
+    pictures.push({
+      id: item.id,
+      imageUrl: best.row.image_url,
+      name: best.row.name,
+      setName: best.row.set_name,
+    })
+  }
+  return { items: pictures }
 }
 
 export async function listSets(client, gameKey) {

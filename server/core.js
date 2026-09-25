@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { registerAccount } from './account.js'
-import { ingestOne, latestSealed, listSets, productDetail, quotesFor, refreshPrices, search } from './catalog.js'
+import { ingestOne, latestSealed, listSets, picturesFor, productDetail, quotesFor, refreshPrices, search } from './catalog.js'
 import { adminClient, userFromRequest } from './supabase.js'
 
 const hits = new Map()
@@ -77,8 +77,12 @@ export async function handleApi(request) {
     if (!cron && !user) return json(401, { error: 'Sign in required.' })
 
     if (path === '/api/search' && method === 'POST') {
-      if (limited(user.id, 'search', 24, 60_000)) return json(429, { error: 'Too many searches. Wait a minute.' })
+      if (limited(user.id, 'search', 40, 60_000)) return json(429, { error: 'Too many searches. Wait a minute.' })
       return json(200, await search(client, await readJson(request)))
+    }
+    if (path === '/api/pictures' && method === 'POST') {
+      if (limited(user.id, 'pictures', 20, 60_000)) return json(429, { error: 'Wait a minute before loading more photos.' })
+      return json(200, await picturesFor(client, await readJson(request)))
     }
     if (path === '/api/sets' && method === 'GET') {
       return json(200, await listSets(client, url.searchParams.get('game') || ''))

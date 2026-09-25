@@ -55,13 +55,19 @@ export function MarketPage() {
     let live = true
     const timer = window.setTimeout(() => {
       setSearching(true)
-      searchProducts(game, q, filter)
-        .then((data) => {
+      const run = async () => {
+        let guard = 0
+        let data: Awaited<ReturnType<typeof searchProducts>> | null = null
+        do {
+          data = await searchProducts(game, q, filter)
           if (!live) return
           setResults(data.results)
           setSets(data.sets)
-          setNote(data.note)
-        })
+          setNote(data.shouldContinue ? 'Checking the rest of the sets for that word…' : data.note)
+          guard += 1
+        } while (data.shouldContinue && guard < 12)
+      }
+      run()
         .catch((err: unknown) => {
           if (live) setError(err instanceof Error ? err.message : 'Search failed.')
         })
@@ -178,8 +184,8 @@ export function MarketPage() {
         </div>
       ) : (
         <div className="stack">
-          <h2>Results</h2>
-          {searching ? <p className="quiet">Searching TCGplayer…</p> : null}
+          <h2>Results{results.length ? ` · ${results.length}` : ''}</h2>
+          {searching ? <p className="quiet">Searching every set for that word…</p> : null}
           {note ? <p className="quiet">{note}</p> : null}
           <ProductList products={results} watch={watch} onToggle={toggleWatch} />
           {sets.length > 0 ? (

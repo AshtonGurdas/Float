@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
+import { Thumb } from '../components/Thumb.tsx'
+import { picturesFor, type Quote } from '../lib/api.ts'
 import { positions, roundMoney, type Lot } from '../lib/books.ts'
 import { kindLabel, money, signedMoney, tone } from '../lib/format.ts'
 import { quoteKey } from '../lib/market.ts'
-import type { Quote } from '../lib/api.ts'
 import { useShop } from '../store.tsx'
 
 function heldMarket(lot: Lot, quote: Quote | undefined) {
@@ -13,8 +15,28 @@ function heldMarket(lot: Lot, quote: Quote | undefined) {
 }
 
 export function InventoryPage() {
-  const { entries, quotes, openDraft } = useShop()
+  const { entries, quotes, openDraft, setError } = useShop()
+  const [photos, setPhotos] = useState<Record<string, string>>({})
   const lots = positions(entries)
+  const photoKey = entries.map((entry) => `${entry.id}:${entry.title}:${entry.detail}`).join('|')
+  useEffect(() => {
+    let live = true
+    const items = positions(entries).map((lot) => ({ id: lot.buy.id, title: lot.buy.title, detail: lot.buy.detail }))
+    if (!items.length) return
+    picturesFor(items)
+      .then((data) => {
+        if (!live) return
+        const next: Record<string, string> = {}
+        for (const item of data.items) next[item.id] = item.imageUrl
+        setPhotos(next)
+      })
+      .catch((err: unknown) => {
+        if (live) setError(err instanceof Error ? err.message : 'Card photos did not load.')
+      })
+    return () => {
+      live = false
+    }
+  }, [photoKey, entries, setError])
   const open = lots.filter((lot) => lot.remaining > 0)
   const closed = lots.filter((lot) => lot.remaining <= 0)
   const tied = open.reduce((sum, lot) => sum + lot.costLeft, 0)
@@ -68,7 +90,12 @@ export function InventoryPage() {
       ) : (
         <div className="ledger">
           {open.map((lot) => (
-            <LotRow key={lot.buy.id} lot={lot} quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]} />
+            <LotRow
+              key={lot.buy.id}
+              lot={lot}
+              quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
+              photo={photos[lot.buy.id]}
+            />
           ))}
         </div>
       )}
@@ -77,7 +104,12 @@ export function InventoryPage() {
           <summary>Sold through ({closed.length})</summary>
           <div className="ledger">
             {closed.map((lot) => (
-              <LotRow key={lot.buy.id} lot={lot} quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]} />
+              <LotRow
+                key={lot.buy.id}
+                lot={lot}
+                quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
+                photo={photos[lot.buy.id]}
+              />
             ))}
           </div>
         </details>
@@ -86,12 +118,14 @@ export function InventoryPage() {
   )
 }
 
-function LotRow({ lot, quote }: { lot: Lot; quote: Quote | undefined }) {
+function LotRow({ lot, quote, photo }: { lot: Lot; quote: Quote | undefined; photo?: string }) {
   const { openDraft } = useShop()
   const each = heldMarket(lot, quote)
   const openValue = each == null ? null : each * lot.remaining - lot.costLeft
+  const image = quote?.imageUrl || photo || null
   return (
     <article className="lot">
+      <Thumb src={image} name={lot.buy.title} />
       <div>
         <p className="row-title">{lot.buy.title}</p>
         <p className="row-sub">
