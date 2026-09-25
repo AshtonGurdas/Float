@@ -26,9 +26,15 @@ export function AuthScreen() {
     setBusy(true)
     try {
       if (mode === 'up') {
-        const { data, error: signError } = await supabase.auth.signUp({ email: email.trim(), password })
+        const response = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password }),
+        })
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(body.error || 'Could not create the account.')
+        const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
         if (signError) throw signError
-        if (!data.session) setNotice('Check your email to confirm the account, then sign in.')
       } else {
         const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
         if (signError) throw signError
@@ -38,23 +44,6 @@ export function AuthScreen() {
     } finally {
       setBusy(false)
     }
-  }
-
-  async function reset() {
-    if (!supabase) return
-    setError(null)
-    setNotice(null)
-    if (!email.includes('@')) {
-      setError('Enter your email first, then ask for the reset link.')
-      return
-    }
-    setBusy(true)
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: window.location.origin,
-    })
-    setBusy(false)
-    if (resetError) setError(friendlyAuth(resetError.message))
-    else setNotice('Reset link sent. Open it on this phone or computer.')
   }
 
   return (
@@ -96,9 +85,7 @@ export function AuthScreen() {
         >
           {mode === 'up' ? 'Already have an account? Sign in' : 'New shop books? Create an account'}
         </button>
-        {mode === 'in' ? (
-          <button type="button" className="text-btn" onClick={reset} disabled={busy}>Email me a reset link</button>
-        ) : null}
+
       </div>
     </main>
   )

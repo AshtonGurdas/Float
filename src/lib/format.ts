@@ -80,5 +80,7 @@ export function friendlyAuth(message: string) {
   if (/already registered|already been registered/i.test(message)) return 'That email already has an account. Sign in instead.'
   if (/password/i.test(message) && /least|short|weak/i.test(message)) return 'Use at least 8 characters.'
   if (/email/i.test(message) && /invalid/i.test(message)) return 'That email does not look right.'
+  if (/rate limit/i.test(message)) return 'The confirmation email was blocked. Refresh the page and create the account again. No email is required.'
+  if (/not confirmed/i.test(message)) return 'That account is not confirmed yet. Create it again with the same email and it will sign you in.'
   return message
 }

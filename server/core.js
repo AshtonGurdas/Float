@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
+import { registerAccount } from './account.js'
 import { ingestOne, latestSealed, listSets, productDetail, quotesFor, refreshPrices, search } from './catalog.js'
 import { adminClient, userFromRequest } from './supabase.js'
 
@@ -62,6 +63,14 @@ export async function handleApi(request) {
   try {
     const client = adminClient()
     if (!client) return json(500, { error: 'Supabase is not configured on the server.' })
+
+    if (path === '/api/signup' && method === 'POST') {
+      const ip = (request.headers.get('x-forwarded-for') || 'local').split(',')[0].trim() || 'local'
+      if (limited(ip, 'signup', 8, 60 * 60 * 1000)) {
+        return json(429, { error: 'Too many account attempts. Wait an hour and try again.' })
+      }
+      return json(200, await registerAccount(client, await readJson(request)))
+    }
 
     const cron = path === '/api/prices/refresh' && isCron(request)
     const user = cron ? null : await userFromRequest(client, request)
