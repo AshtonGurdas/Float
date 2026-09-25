@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { quotesFor, refreshPrices, type CatalogProduct, type Quote } from './lib/api.ts'
 import type { Entry } from './lib/books.ts'
 import { quoteKey } from './lib/market.ts'
-import { entryFromRow, entryToRow, watchFromRow, type EntryInput, type Watch } from './lib/rows.ts'
+import { entryFromRow, entryToRow, shopFromRow, shopToRow, watchFromRow, type EntryInput, type Shop, type Watch } from './lib/rows.ts'
 import { supabase } from './lib/supabase.ts'
 
 export type Draft =
@@ -13,6 +13,7 @@ export type Draft =
 
 type ShopValue = {
   entries: Entry[]
+  shops: Shop[]
   watch: Watch[]
   quotes: Record<string, Quote>
   loading: boolean
@@ -23,6 +24,8 @@ type ShopValue = {
   closeDraft: () => void
   saveEntry: (input: EntryInput, id?: string) => Promise<void>
   deleteEntry: (id: string) => Promise<void>
+  saveShop: (input: Omit<Shop, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => Promise<void>
+  deleteShop: (id: string) => Promise<void>
   watchProduct: (product: CatalogProduct, subtype: string) => Promise<void>
   unwatch: (id: string) => Promise<void>
   refreshMarket: () => Promise<void>
@@ -58,6 +61,7 @@ function quoteItems(entries: Entry[], watch: Watch[]) {
 
 export function ShopProvider({ session, children }: { session: Session; children: ReactNode }) {
   const [entries, setEntries] = useState<Entry[]>([])
+  const [shops, setShops] = useState<Shop[]>([])
   const [watch, setWatch] = useState<Watch[]>([])
   const [quotes, setQuotes] = useState<Record<string, Quote>>({})
   const [loading, setLoading] = useState(true)
@@ -82,16 +86,20 @@ export function ShopProvider({ session, children }: { session: Session; children
   const load = useCallback(async () => {
     if (!supabase) return
     setLoading(true)
-    const [entryRes, watchRes] = await Promise.all([
+    const [entryRes, watchRes, shopRes] = await Promise.all([
       supabase.from('entries').select('*').order('occurred_on', { ascending: false }).limit(2000),
       supabase.from('watchlist').select('*').order('created_at', { ascending: false }),
+      supabase.from('shops').select('*').order('name'),
     ])
     if (entryRes.error) throw new Error(entryRes.error.message)
     if (watchRes.error) throw new Error(watchRes.error.message)
+    if (shopRes.error) throw new Error(shopRes.error.message)
     const nextEntries = ((entryRes.data || []) as Parameters<typeof entryFromRow>[0][]).map(entryFromRow).sort(byDate)
     const nextWatch = ((watchRes.data || []) as Parameters<typeof watchFromRow>[0][]).map(watchFromRow)
+    const nextShops = ((shopRes.data || []) as Parameters<typeof shopFromRow>[0][]).map(shopFromRow)
     setEntries(nextEntries)
     setWatch(nextWatch)
+    setShops(nextShops)
     setLoading(false)
     try {
       await loadQuotes(quoteItems(nextEntries, nextWatch))
@@ -129,6 +137,29 @@ export function ShopProvider({ session, children }: { session: Session; children
       loadQuotes([{ productId: next.productId, subtype: next.subtype }]).catch(() => {})
     }
   }, [loadQuotes, userId])
+
+  const saveShop = useCallback(async (input: Omit<Shop, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => {
+    if (!supabase) throw new Error('Supabase is not configured.')
+    const row = shopToRow(input, userId)
+    const query = id
+      ? supabase.from('shops').update(row).eq('id', id).select('*').single()
+      : supabase.from('shops').insert(row).select('*').single()
+    const { data, error: saveError } = await query
+    if (saveError) throw new Error(saveError.message)
+    const next = shopFromRow(data as Parameters<typeof shopFromRow>[0])
+    setShops((current) => {
+      const without = current.filter((shop) => shop.id !== next.id)
+      return [...without, next].sort((a, b) => a.name.localeCompare(b.name))
+    })
+  }, [userId])
+
+  const deleteShop = useCallback(async (id: string) => {
+    if (!supabase) throw new Error('Supabase is not configured.')
+    const { error: deleteError } = await supabase.from('shops').delete().eq('id', id)
+    if (deleteError) throw new Error(deleteError.message)
+    setShops((current) => current.filter((shop) => shop.id !== id))
+    setEntries((current) => current.map((entry) => entry.shopId === id ? { ...entry, shopId: null } : entry))
+  }, [])
 
   const deleteEntry = useCallback(async (id: string) => {
     if (!supabase) throw new Error('Supabase is not configured.')
@@ -189,6 +220,7 @@ export function ShopProvider({ session, children }: { session: Session; children
 
   const value = useMemo<ShopValue>(() => ({
     entries,
+    shops,
     watch,
     quotes,
     loading,
@@ -199,11 +231,13 @@ export function ShopProvider({ session, children }: { session: Session; children
     closeDraft: () => setDraft(null),
     saveEntry,
     deleteEntry,
+    saveShop,
+    deleteShop,
     watchProduct,
     unwatch,
     refreshMarket,
     quoteFor,
-  }), [entries, watch, quotes, loading, error, draft, saveEntry, deleteEntry, watchProduct, unwatch, refreshMarket, quoteFor])
+  }), [entries, shops, watch, quotes, loading, error, draft, saveEntry, deleteEntry, saveShop, deleteShop, watchProduct, unwatch, refreshMarket, quoteFor])
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>
 }

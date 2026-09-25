@@ -16,6 +16,7 @@ export type Entry = {
   subtype: string | null
   boxesPerCase: number | null
   lotId: string | null
+  shopId: string | null
   createdAt: string
 }
 

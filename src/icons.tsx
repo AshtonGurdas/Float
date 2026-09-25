@@ -27,6 +27,16 @@ export function IconStock({ className = 'icon' }: IconProps) {
   )
 }
 
+export function IconShops({ className = 'icon' }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 10.5 6.2 5.5h11.6L20 10.5" />
+      <path d="M4 10.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8.5Z" />
+      <path d="M9.5 20v-5h5v5" />
+    </svg>
+  )
+}
+
 export function IconPlus({ className = 'icon' }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true">

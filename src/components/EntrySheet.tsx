@@ -41,6 +41,7 @@ type FormState = {
   attachedName: string
   boxesText: string
   lotId: string | null
+  shopId: string | null
 }
 
 function blank(partial?: Partial<Entry> & { attachedName?: string }): FormState {
@@ -60,11 +61,12 @@ function blank(partial?: Partial<Entry> & { attachedName?: string }): FormState 
     attachedName: partial?.attachedName || '',
     boxesText: String(partial?.boxesPerCase || 6),
     lotId: partial?.lotId ?? null,
+    shopId: partial?.shopId ?? null,
   }
 }
 
 export function EntrySheet() {
-  const { draft, closeDraft, entries, saveEntry, deleteEntry } = useShop()
+  const { draft, closeDraft, entries, shops, saveEntry, deleteEntry } = useShop()
   const [form, setForm] = useState<FormState>(() => blank())
   const [prices, setPrices] = useState<CatalogProduct['prices']>([])
   const [error, setError] = useState<string | null>(null)
@@ -99,6 +101,7 @@ export function EntrySheet() {
         subtype: draft.buy.subtype,
         boxesPerCase: draft.buy.boxesPerCase,
         lotId: draft.buy.id,
+        shopId: null,
         attachedName: draft.buy.productId ? draft.buy.title : '',
         occurredOn: todayISO(),
       }))
@@ -227,6 +230,7 @@ export function EntrySheet() {
     subtype: form.subtype,
     boxesPerCase: form.itemKind === 'case' ? Number(form.boxesText) || 6 : null,
     lotId: form.lotId,
+    shopId: form.shopId,
     createdAt: '',
   }
   const previewCash = qty ? lineCash(previewEntry) : 0
@@ -275,6 +279,7 @@ export function EntrySheet() {
       subtype: form.subtype,
       boxesPerCase: form.itemKind === 'case' ? Math.max(1, Number(form.boxesText) || 6) : null,
       lotId: form.lotId,
+      shopId: form.direction === 'out' && form.itemKind !== 'fee' ? form.shopId : null,
     }
     setSaving(true)
     try {
@@ -397,6 +402,17 @@ export function EntrySheet() {
           Date
           <input type="date" value={form.occurredOn} onChange={(event) => patch({ occurredOn: event.target.value })} />
         </label>
+        {form.direction === 'out' && form.itemKind !== 'fee' ? (
+          <label className="field">
+            Store
+            <select value={form.shopId || ''} onChange={(event) => patch({ shopId: event.target.value || null })}>
+              <option value="">Not linked</option>
+              {shops.map((shop) => (
+                <option key={shop.id} value={shop.id}>{shop.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="field">
           Note
           <textarea value={form.notes} onChange={(event) => patch({ notes: event.target.value })} rows={2} placeholder="Optional" />

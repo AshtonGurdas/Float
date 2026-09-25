@@ -17,6 +17,7 @@ type EntryRow = {
   subtype: string | null
   boxes_per_case: number | null
   lot_id: string | null
+  shop_id: string | null
   created_at: string
 }
 
@@ -36,6 +37,7 @@ export function entryFromRow(row: EntryRow): Entry {
     subtype: row.subtype,
     boxesPerCase: row.boxes_per_case == null ? null : Number(row.boxes_per_case),
     lotId: row.lot_id,
+    shopId: row.shop_id,
     createdAt: row.created_at,
   }
 }
@@ -56,6 +58,67 @@ export function entryToRow(entry: EntryInput, userId: string) {
     subtype: entry.subtype,
     boxes_per_case: entry.itemKind === 'case' ? entry.boxesPerCase : null,
     lot_id: entry.lotId,
+    shop_id: entry.shopId,
+  }
+}
+
+export type ShopShipping = 'fast' | 'ok' | 'slow' | 'waiting'
+export type ShopQuality = 'great' | 'ok' | 'poor' | 'unchecked'
+export type ShopLegit = 'yes' | 'unsure' | 'no'
+export type ShopAgain = 'yes' | 'maybe' | 'no'
+
+export type Shop = {
+  id: string
+  name: string
+  whereFrom: string
+  shipping: ShopShipping
+  quality: ShopQuality
+  legit: ShopLegit
+  again: ShopAgain
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+type ShopRow = {
+  id: string
+  name: string
+  where_from: string | null
+  shipping: ShopShipping
+  quality: ShopQuality
+  legit: ShopLegit
+  again: ShopAgain
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function shopFromRow(row: ShopRow): Shop {
+  return {
+    id: row.id,
+    name: row.name,
+    whereFrom: row.where_from || '',
+    shipping: row.shipping,
+    quality: row.quality,
+    legit: row.legit,
+    again: row.again,
+    notes: row.notes || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export function shopToRow(shop: Omit<Shop, 'id' | 'createdAt' | 'updatedAt'>, userId: string) {
+  return {
+    user_id: userId,
+    name: shop.name.trim(),
+    where_from: shop.whereFrom.trim() || null,
+    shipping: shop.shipping,
+    quality: shop.quality,
+    legit: shop.legit,
+    again: shop.again,
+    notes: shop.notes.trim() || null,
+    updated_at: new Date().toISOString(),
   }
 }
 
