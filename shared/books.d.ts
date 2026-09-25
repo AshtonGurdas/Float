@@ -1,0 +1,41 @@
+export type Direction = 'out' | 'in'
+export type ItemKind = 'card' | 'box' | 'case' | 'sealed' | 'fee' | 'other'
+
+export type Entry = {
+  id: string
+  direction: Direction
+  itemKind: ItemKind
+  title: string
+  detail: string
+  quantity: number
+  unitAmount: number
+  fees: number
+  occurredOn: string
+  notes: string
+  productId: number | null
+  subtype: string | null
+  boxesPerCase: number | null
+  lotId: string | null
+  createdAt: string
+}
+
+export type Lot = {
+  buy: Entry
+  sales: Entry[]
+  soldQty: number
+  remaining: number
+  oversold: boolean
+  unitCost: number
+  costLeft: number
+}
+
+export function roundMoney(amount: number): number
+export function lineCashCents(entry: Entry): number
+export function lineCash(entry: Entry): number
+export function summarize(entries: Entry[], start?: string, end?: string): { spent: number; made: number; net: number }
+export function positions(entries: Entry[]): Lot[]
+export function realized(entries: Entry[], start?: string, end?: string): { total: number; count: number }
+export function monthNets(entries: Entry[], year: number): number[]
+export function yearNets(entries: Entry[]): { year: string; net: number }[]
+export function monthBounds(year: number, month: number): { start: string; end: string }
+export function yearBounds(year: number): { start: string; end: string }

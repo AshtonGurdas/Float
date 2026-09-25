@@ -1,0 +1,89 @@
+import type { Session } from '@supabase/supabase-js'
+import { useEffect, useState } from 'react'
+import { IconBooks, IconMarket, IconPlus, IconStock } from '../icons.tsx'
+import { parseRoute, sectionOf, type Route } from '../lib/route.ts'
+import { supabase } from '../lib/supabase.ts'
+import { useShop } from '../store.tsx'
+import { EntrySheet } from './EntrySheet.tsx'
+import { BooksPage } from '../pages/Books.tsx'
+import { InventoryPage } from '../pages/Inventory.tsx'
+import { MarketPage } from '../pages/Market.tsx'
+import { ProductPage } from '../pages/Product.tsx'
+
+export function Shell({
+  session,
+  theme,
+  setTheme,
+}: {
+  session: Session
+  theme: 'dark' | 'light'
+  setTheme: (theme: 'dark' | 'light') => void
+}) {
+  const { error, setError, openDraft } = useShop()
+  const [route, setRoute] = useState<Route>(() => parseRoute(location.hash))
+
+  useEffect(() => {
+    const onHash = () => setRoute(parseRoute(location.hash))
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  const section = sectionOf(route)
+  const email = session.user.email || 'Signed in'
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark">Float</span>
+          <span className="brand-sub">TCG shop</span>
+        </div>
+        <nav className="side-nav" aria-label="Sections">
+          <a className={section === 'books' ? 'is-active' : ''} href="#/" aria-current={section === 'books' ? 'page' : undefined}>
+            <IconBooks /> Books
+          </a>
+          <a className={section === 'market' ? 'is-active' : ''} href="#/market" aria-current={section === 'market' ? 'page' : undefined}>
+            <IconMarket /> Market
+          </a>
+          <a className={section === 'inventory' ? 'is-active' : ''} href="#/inventory" aria-current={section === 'inventory' ? 'page' : undefined}>
+            <IconStock /> Stock
+          </a>
+        </nav>
+        <div className="side-foot">
+          <button type="button" className="text-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+          <p className="quiet">{email}</p>
+          <button type="button" className="text-btn" onClick={() => { void supabase?.auth.signOut() }}>Sign out</button>
+        </div>
+      </aside>
+      <div className="content">
+        {error ? (
+          <div className="banner" role="status">
+            <span>{error}</span>
+            <button type="button" className="text-btn" onClick={() => setError(null)}>Dismiss</button>
+          </div>
+        ) : null}
+        {route.name === 'books' ? <BooksPage /> : null}
+        {route.name === 'market' ? <MarketPage /> : null}
+        {route.name === 'inventory' ? <InventoryPage /> : null}
+        {route.name === 'product' ? <ProductPage productId={route.productId} subtype={route.subtype} /> : null}
+      </div>
+      <nav className="tabbar" aria-label="Sections">
+        <a className={section === 'books' ? 'is-active' : ''} href="#/" aria-current={section === 'books' ? 'page' : undefined}>
+          <IconBooks /> Books
+        </a>
+        <a className={section === 'market' ? 'is-active' : ''} href="#/market" aria-current={section === 'market' ? 'page' : undefined}>
+          <IconMarket /> Market
+        </a>
+        <a className={section === 'inventory' ? 'is-active' : ''} href="#/inventory" aria-current={section === 'inventory' ? 'page' : undefined}>
+          <IconStock /> Stock
+        </a>
+        <button type="button" onClick={() => openDraft({ mode: 'create' })}>
+          <IconPlus /> Add
+        </button>
+      </nav>
+      <EntrySheet />
+    </div>
+  )
+}
