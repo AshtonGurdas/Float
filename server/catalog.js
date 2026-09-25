@@ -38,11 +38,8 @@ function isSealed(product) {
   return !number && !rarity
 }
 
-function searchText(product, setName, number, rarity, sealed) {
-  return [product.name, product.cleanName, setName, number, rarity, sealed ? 'sealed product booster box case pack' : 'single card']
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
+function searchText(product, setName, number, rarity) {
+  return [product.name, product.cleanName, setName, number, rarity].filter(Boolean).join(' ').toLowerCase()
 }
 
 async function chunkUpsert(client, table, rows, onConflict, size = 400) {
@@ -196,7 +193,7 @@ export async function ingestGroup(client, game, group, extraKeys = new Set()) {
       number,
       rarity,
       sealed,
-      search_text: searchText(product, group.name, number, rarity, sealed),
+      search_text: searchText(product, group.name, number, rarity),
       updated_at: now,
     })
   }
@@ -274,6 +271,12 @@ function scoreRow(row, parts) {
     else if ((row.number || '').toLowerCase().includes(token)) score += 2
   }
   if (parts[0] && name.startsWith(parts[0])) score += 2
+  const wantsBox = parts.includes('box') && !parts.includes('bundle')
+  const wantsCase = parts.includes('case')
+  if (wantsBox && name.includes('booster box')) score += 12
+  if (wantsBox && name.includes('bundle')) score -= 6
+  if (wantsCase && /\bcase\b/.test(name)) score += 12
+  if ((parts.includes('etb') || (parts.includes('elite') && parts.includes('trainer'))) && name.includes('elite trainer')) score += 12
   return score
 }
 
