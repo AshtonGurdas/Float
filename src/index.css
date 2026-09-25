@@ -336,6 +336,9 @@ svg.icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-w
   font-weight: 450;
 }
 .field textarea { min-height: 76px; resize: vertical; }
+.password-row { display: flex; gap: 8px; align-items: center; }
+.password-row input { flex: 1; min-width: 0; }
+.password-row .btn { flex: 0 0 auto; }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 8px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip {

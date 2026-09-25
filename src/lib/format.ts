@@ -76,7 +76,7 @@ export function kindLabel(entry: Entry) {
 }
 
 export function friendlyAuth(message: string) {
-  if (/invalid login|invalid credentials/i.test(message)) return 'That email or password is not right.'
+  if (/invalid login|invalid credentials/i.test(message)) return 'That email or password does not match the account. Check for a capital letter, then try Sign in again.'
   if (/already registered|already been registered/i.test(message)) return 'That email already has an account. Sign in instead.'
   if (/password/i.test(message) && /least|short|weak/i.test(message)) return 'Use at least 8 characters.'
   if (/email/i.test(message) && /invalid/i.test(message)) return 'That email does not look right.'

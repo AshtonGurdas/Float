@@ -2,21 +2,29 @@ import { useState, type FormEvent } from 'react'
 import { friendlyAuth } from '../lib/format.ts'
 import { supabase } from '../lib/supabase.ts'
 
+function cleanEmail(value: string) {
+  return value.replace(/[\u200b\u200c\u200d\ufeff]/g, '').trim().toLowerCase()
+}
+
+function cleanPassword(value: string) {
+  return value.replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+}
+
 export function AuthScreen() {
   const [mode, setMode] = useState<'in' | 'up'>('in')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabase) return
+    const data = new FormData(event.currentTarget)
+    const email = cleanEmail(String(data.get('email') || ''))
+    const password = cleanPassword(String(data.get('password') || ''))
     setError(null)
-    setNotice(null)
-    if (!email.includes('@')) {
-      setError('Enter the email for this shop.')
+    if (!email.includes('@') || !email.includes('.')) {
+      setError('Enter the full email for this shop.')
       return
     }
     if (password.length < 8) {
@@ -29,16 +37,13 @@ export function AuthScreen() {
         const response = await fetch('/api/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim(), password }),
+          body: JSON.stringify({ email, password }),
         })
         const body = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(body.error || 'Could not create the account.')
-        const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-        if (signError) throw signError
-      } else {
-        const { error: signError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-        if (signError) throw signError
       }
+      const { error: signError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signError) throw signError
     } catch (err) {
       setError(friendlyAuth(err instanceof Error ? err.message : 'Could not sign in.'))
     } finally {
@@ -52,40 +57,53 @@ export function AuthScreen() {
         <p className="kicker">TCG shop</p>
         <h1>Float</h1>
         <p className="lede">
-          Track what you spent and what you made, down to a single card or a case of boxes. Watch daily TCGplayer prices beside it.
+          One login for your phone, laptop, and computer. The books stay in the account, not on the device.
         </p>
-        <form onSubmit={onSubmit}>
+        <div className="seg" role="group" aria-label="Account action">
+          <button type="button" aria-pressed={mode === 'in'} onClick={() => { setMode('in'); setError(null) }}>Sign in</button>
+          <button type="button" aria-pressed={mode === 'up'} onClick={() => { setMode('up'); setError(null) }}>Create account</button>
+        </div>
+        <form onSubmit={onSubmit} autoComplete="on">
           <label className="field">
             Email
-            <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            <input
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              enterKeyHint="next"
+            />
           </label>
           <label className="field">
             Password
-            <input
-              type="password"
-              autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
+            <span className="password-row">
+              <input
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="go"
+              />
+              <button type="button" className="btn ghost" onClick={() => setShowPassword((open) => !open)}>
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </span>
           </label>
           {error ? <p className="error-text">{error}</p> : null}
-          {notice ? <p className="quiet">{notice}</p> : null}
           <button className="btn wide" type="submit" disabled={busy}>
             {busy ? 'Working…' : mode === 'up' ? 'Create account' : 'Sign in'}
           </button>
         </form>
-        <button
-          type="button"
-          className="text-btn"
-          onClick={() => {
-            setMode(mode === 'up' ? 'in' : 'up')
-            setError(null)
-            setNotice(null)
-          }}
-        >
-          {mode === 'up' ? 'Already have an account? Sign in' : 'New shop books? Create an account'}
-        </button>
-
+        <p className="quiet">
+          {mode === 'in'
+            ? 'Use the same email and password you created on the computer. Tap Show if the phone changed a letter.'
+            : 'Only create an account if you have never signed up. If you already did, switch to Sign in.'}
+        </p>
       </div>
     </main>
   )
