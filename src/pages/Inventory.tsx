@@ -4,6 +4,7 @@ import { picturesFor, type Quote } from '../lib/api.ts'
 import { positions, roundMoney, type Lot } from '../lib/books.ts'
 import { kindLabel, money, signedMoney, tone } from '../lib/format.ts'
 import { quoteKey } from '../lib/market.ts'
+import { CARRIERS, carrierLabel, guessCarrier, trackingUrl } from '../../shared/tracking.js'
 import { useShop } from '../store.tsx'
 
 function heldMarket(lot: Lot, quote: Quote | undefined) {
@@ -17,6 +18,7 @@ function heldMarket(lot: Lot, quote: Quote | undefined) {
 export function InventoryPage() {
   const { entries, quotes, openDraft, setError } = useShop()
   const [photos, setPhotos] = useState<Record<string, string>>({})
+  const [trackingLot, setTrackingLot] = useState<Lot | null>(null)
   const lots = positions(entries)
   const photoKey = entries.map((entry) => `${entry.id}:${entry.title}:${entry.detail}`).join('|')
   useEffect(() => {
@@ -95,6 +97,7 @@ export function InventoryPage() {
               lot={lot}
               quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
               photo={photos[lot.buy.id]}
+              onTrack={() => setTrackingLot(lot)}
             />
           ))}
         </div>
@@ -109,16 +112,18 @@ export function InventoryPage() {
                 lot={lot}
                 quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
                 photo={photos[lot.buy.id]}
+                onTrack={() => setTrackingLot(lot)}
               />
             ))}
           </div>
         </details>
       ) : null}
+      {trackingLot ? <TrackingSheet lot={trackingLot} onClose={() => setTrackingLot(null)} /> : null}
     </section>
   )
 }
 
-function LotRow({ lot, quote, photo }: { lot: Lot; quote: Quote | undefined; photo?: string }) {
+function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; onTrack: () => void }) {
   const { openDraft } = useShop()
   const each = heldMarket(lot, quote)
   const openValue = each == null ? null : each * lot.remaining - lot.costLeft
@@ -131,6 +136,9 @@ function LotRow({ lot, quote, photo }: { lot: Lot; quote: Quote | undefined; pho
         <p className="row-sub">
           {[kindLabel(lot.buy), lot.buy.detail, `${lot.remaining} left`, `cost ${money(lot.costLeft)}`].filter(Boolean).join(' · ')}
         </p>
+        {lot.buy.trackingNumber ? (
+          <p className="quiet">{carrierLabel(lot.buy.trackingCarrier)} · {lot.buy.trackingNumber}</p>
+        ) : null}
         {each == null ? (
           <p className="quiet">No market price on this line.</p>
         ) : (
@@ -140,11 +148,97 @@ function LotRow({ lot, quote, photo }: { lot: Lot; quote: Quote | undefined; pho
         )}
       </div>
       <div className="lot-actions">
+        <button type="button" className="btn ghost" onClick={onTrack}>
+          {lot.buy.trackingNumber ? 'Open tracking' : 'Add tracking'}
+        </button>
         {lot.remaining > 0 ? (
           <button type="button" className="btn" onClick={() => openDraft({ mode: 'sell', buy: lot.buy })}>Sell</button>
         ) : null}
         <button type="button" className="btn ghost" onClick={() => openDraft({ mode: 'edit', entry: lot.buy })}>Edit</button>
       </div>
     </article>
+  )
+}
+
+function TrackingSheet({ lot, onClose }: { lot: Lot; onClose: () => void }) {
+  const { saveEntry } = useShop()
+  const [number, setNumber] = useState(lot.buy.trackingNumber || '')
+  const [carrier, setCarrier] = useState(lot.buy.trackingCarrier || '')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const chosen = carrier || (number.trim() ? guessCarrier(number) : '')
+  const href = trackingUrl(chosen, number)
+
+  async function onSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      await saveEntry({
+        direction: lot.buy.direction,
+        itemKind: lot.buy.itemKind,
+        title: lot.buy.title,
+        detail: lot.buy.detail,
+        quantity: lot.buy.quantity,
+        unitAmount: lot.buy.unitAmount,
+        fees: lot.buy.fees,
+        occurredOn: lot.buy.occurredOn,
+        notes: lot.buy.notes,
+        productId: lot.buy.productId,
+        subtype: lot.buy.subtype,
+        boxesPerCase: lot.buy.boxesPerCase,
+        lotId: lot.buy.lotId,
+        shopId: lot.buy.shopId,
+        trackingNumber: number.trim() || null,
+        trackingCarrier: number.trim() ? chosen || 'other' : null,
+      }, lot.buy.id)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that tracking number.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="backdrop" onMouseDown={onClose}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="track-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="grab" aria-hidden="true" />
+        <div className="sheet-head">
+          <h2 id="track-title">Tracking</h2>
+          <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+        </div>
+        <p className="quiet">{lot.buy.title}</p>
+        <label className="field">
+          Tracking number
+          <input
+            value={number}
+            onChange={(event) => {
+              const next = event.target.value
+              setNumber(next)
+              if (!carrier && next.trim()) setCarrier(guessCarrier(next))
+            }}
+            placeholder="Paste the number from the seller"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+          />
+        </label>
+        <label className="field">
+          Carrier
+          <select value={carrier} onChange={(event) => setCarrier(event.target.value)}>
+            <option value="">Choose</option>
+            {CARRIERS.map((item) => (
+              <option key={item.id} value={item.id}>{item.label}</option>
+            ))}
+          </select>
+        </label>
+        {error ? <p className="error-text">{error}</p> : null}
+        <div className="action-row">
+          <button type="button" className="btn" onClick={onSave} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          {href ? (
+            <a className="btn ghost" href={href} target="_blank" rel="noreferrer">Open tracking</a>
+          ) : null}
+        </div>
+      </div>
+    </div>
   )
 }

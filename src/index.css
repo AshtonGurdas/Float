@@ -84,8 +84,8 @@ h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); letter-spacing: 
   right: 0;
   bottom: 0;
   z-index: 20;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
+  overflow-x: auto;
   padding-bottom: env(safe-area-inset-bottom);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(16px);
@@ -95,6 +95,7 @@ h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); letter-spacing: 
   display: grid;
   justify-items: center;
   gap: 2px;
+  flex: 1 0 68px;
   min-height: 56px;
   padding: 8px 0 6px;
   border: 0;

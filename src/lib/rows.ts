@@ -18,6 +18,8 @@ type EntryRow = {
   boxes_per_case: number | null
   lot_id: string | null
   shop_id: string | null
+  tracking_number: string | null
+  tracking_carrier: string | null
   created_at: string
 }
 
@@ -38,6 +40,8 @@ export function entryFromRow(row: EntryRow): Entry {
     boxesPerCase: row.boxes_per_case == null ? null : Number(row.boxes_per_case),
     lotId: row.lot_id,
     shopId: row.shop_id,
+    trackingNumber: row.tracking_number,
+    trackingCarrier: row.tracking_carrier,
     createdAt: row.created_at,
   }
 }
@@ -59,6 +63,8 @@ export function entryToRow(entry: EntryInput, userId: string) {
     boxes_per_case: entry.itemKind === 'case' ? entry.boxesPerCase : null,
     lot_id: entry.lotId,
     shop_id: entry.shopId,
+    tracking_number: entry.trackingNumber?.trim() || null,
+    tracking_carrier: entry.trackingNumber?.trim() ? entry.trackingCarrier || 'other' : null,
   }
 }
 

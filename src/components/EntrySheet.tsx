@@ -4,6 +4,7 @@ import { lineCash, positions, roundMoney, type Direction, type Entry, type ItemK
 import { GAMES } from '../../shared/games.js'
 import { kindLabel, money, parseMoney, parseQty, todayISO } from '../lib/format.ts'
 import { pickSubtype } from '../lib/market.ts'
+import { CARRIERS, guessCarrier } from '../../shared/tracking.js'
 import type { EntryInput } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
 
@@ -42,6 +43,8 @@ type FormState = {
   boxesText: string
   lotId: string | null
   shopId: string | null
+  trackingNumber: string
+  trackingCarrier: string
 }
 
 function blank(partial?: Partial<Entry> & { attachedName?: string }): FormState {
@@ -62,6 +65,8 @@ function blank(partial?: Partial<Entry> & { attachedName?: string }): FormState 
     boxesText: String(partial?.boxesPerCase || 6),
     lotId: partial?.lotId ?? null,
     shopId: partial?.shopId ?? null,
+    trackingNumber: partial?.trackingNumber || '',
+    trackingCarrier: partial?.trackingCarrier || '',
   }
 }
 
@@ -231,6 +236,8 @@ export function EntrySheet() {
     boxesPerCase: form.itemKind === 'case' ? Number(form.boxesText) || 6 : null,
     lotId: form.lotId,
     shopId: form.shopId,
+    trackingNumber: form.trackingNumber || null,
+    trackingCarrier: form.trackingCarrier || null,
     createdAt: '',
   }
   const previewCash = qty ? lineCash(previewEntry) : 0
@@ -280,6 +287,8 @@ export function EntrySheet() {
       boxesPerCase: form.itemKind === 'case' ? Math.max(1, Number(form.boxesText) || 6) : null,
       lotId: form.lotId,
       shopId: form.direction === 'out' && form.itemKind !== 'fee' ? form.shopId : null,
+      trackingNumber: form.direction === 'out' ? form.trackingNumber.trim() || null : null,
+      trackingCarrier: form.direction === 'out' && form.trackingNumber.trim() ? form.trackingCarrier || 'other' : null,
     }
     setSaving(true)
     try {
@@ -402,6 +411,35 @@ export function EntrySheet() {
           Date
           <input type="date" value={form.occurredOn} onChange={(event) => patch({ occurredOn: event.target.value })} />
         </label>
+        {form.direction === 'out' ? (
+          <div className="split-fields">
+            <label className="field">
+              Tracking number
+              <input
+                value={form.trackingNumber}
+                onChange={(event) => {
+                  const trackingNumber = event.target.value
+                  patch({
+                    trackingNumber,
+                    trackingCarrier: form.trackingCarrier || (trackingNumber.trim() ? guessCarrier(trackingNumber) : ''),
+                  })
+                }}
+                placeholder="Optional"
+                autoComplete="off"
+                autoCapitalize="characters"
+              />
+            </label>
+            <label className="field">
+              Carrier
+              <select value={form.trackingCarrier} onChange={(event) => patch({ trackingCarrier: event.target.value })}>
+                <option value="">Choose</option>
+                {CARRIERS.map((carrier) => (
+                  <option key={carrier.id} value={carrier.id}>{carrier.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : null}
         {form.direction === 'out' && form.itemKind !== 'fee' ? (
           <label className="field">
             Store

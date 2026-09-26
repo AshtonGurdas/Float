@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { registerAccount } from './account.js'
+import { bcEvents } from './events.js'
 import { ingestOne, latestSealed, listSets, picturesFor, productDetail, quotesFor, refreshPrices, search } from './catalog.js'
 import { adminClient, userFromRequest } from './supabase.js'
 
@@ -58,6 +59,15 @@ export async function handleApi(request) {
 
   if (path === '/api/health' && method === 'GET') {
     return json(200, { ok: true, prices: 'tcgplayer' })
+  }
+
+  if (path === '/api/events' && method === 'GET') {
+    try {
+      return json(200, await bcEvents())
+    } catch (error) {
+      console.error(error)
+      return json(502, { error: 'Could not load British Columbia events.' })
+    }
   }
 
   try {
