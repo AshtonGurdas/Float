@@ -19,6 +19,7 @@ export type Entry = {
   shopId: string | null
   trackingNumber: string | null
   trackingCarrier: string | null
+  arrivesOn: string | null
   createdAt: string
 }
 

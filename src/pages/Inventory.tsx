@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Thumb } from '../components/Thumb.tsx'
 import { picturesFor, type Quote } from '../lib/api.ts'
-import { positions, roundMoney, type Lot } from '../lib/books.ts'
-import { kindLabel, money, signedMoney, tone } from '../lib/format.ts'
+import { positions, roundMoney, type Entry, type Lot } from '../lib/books.ts'
+import { kindLabel, money, monthLabel, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
 import { quoteKey } from '../lib/market.ts'
 import { CARRIERS, carrierLabel, guessCarrier, trackingUrl } from '../../shared/tracking.js'
 import { useShop } from '../store.tsx'
@@ -19,6 +19,13 @@ export function InventoryPage() {
   const { entries, quotes, openDraft, setError } = useShop()
   const [photos, setPhotos] = useState<Record<string, string>>({})
   const [trackingLot, setTrackingLot] = useState<Lot | null>(null)
+  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const today = todayISO()
+  const [cursor, setCursor] = useState(() => {
+    const [year, month] = todayISO().split('-').map(Number)
+    return { year, month }
+  })
+  const [selected, setSelected] = useState(todayISO)
   const lots = positions(entries)
   const photoKey = entries.map((entry) => `${entry.id}:${entry.title}:${entry.detail}`).join('|')
   useEffect(() => {
@@ -84,12 +91,29 @@ export function InventoryPage() {
             : 'Attach a TCGplayer listing on a purchase to see what that stock is worth today.'}
         </p>
       </div>
-      {open.length === 0 ? (
+      <div className="seg" role="group" aria-label="Stock view">
+        <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button>
+        <button type="button" aria-pressed={view === 'calendar'} onClick={() => setView('calendar')}>Calendar</button>
+      </div>
+      {view === 'calendar' ? (
+        <ArrivalCalendar
+          entries={entries}
+          photos={photos}
+          quotes={quotes}
+          cursor={cursor}
+          selected={selected}
+          today={today}
+          onCursor={setCursor}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {view === 'list' && open.length === 0 ? (
         <div className="empty">
           <p>Nothing left on hand.</p>
           <p>Log a card, a booster box, or a case. When you sell it, do that from here so the profit stays tied to the cost.</p>
         </div>
-      ) : (
+      ) : null}
+      {view === 'list' && open.length > 0 ? (
         <div className="ledger">
           {open.map((lot) => (
             <LotRow
@@ -101,8 +125,8 @@ export function InventoryPage() {
             />
           ))}
         </div>
-      )}
-      {closed.length > 0 ? (
+      ) : null}
+      {view === 'list' && closed.length > 0 ? (
         <details className="closed">
           <summary>Sold through ({closed.length})</summary>
           <div className="ledger">
@@ -123,6 +147,113 @@ export function InventoryPage() {
   )
 }
 
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+function pad(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function isoDay(year: number, month: number, day: number) {
+  return `${year}-${pad(month)}-${pad(day)}`
+}
+
+function ArrivalCalendar({
+  entries,
+  photos,
+  quotes,
+  cursor,
+  selected,
+  today,
+  onCursor,
+  onSelect,
+}: {
+  entries: Entry[]
+  photos: Record<string, string>
+  quotes: Record<string, Quote>
+  cursor: { year: number; month: number }
+  selected: string
+  today: string
+  onCursor: (next: { year: number; month: number }) => void
+  onSelect: (iso: string) => void
+}) {
+  const { openDraft } = useShop()
+  const byDay = new Map<string, Entry[]>()
+  for (const entry of entries) {
+    if (entry.direction !== 'out' || entry.itemKind === 'fee' || !entry.arrivesOn) continue
+    const list = byDay.get(entry.arrivesOn) || []
+    list.push(entry)
+    byDay.set(entry.arrivesOn, list)
+  }
+  const first = new Date(cursor.year, cursor.month - 1, 1)
+  const days = new Date(cursor.year, cursor.month, 0).getDate()
+  const cells: Array<number | null> = []
+  for (let index = 0; index < first.getDay(); index += 1) cells.push(null)
+  for (let day = 1; day <= days; day += 1) cells.push(day)
+  while (cells.length % 7) cells.push(null)
+  const monthKey = `${cursor.year}-${pad(cursor.month)}`
+  const monthCount = [...byDay.keys()].filter((iso) => iso.startsWith(monthKey)).reduce((sum, iso) => sum + (byDay.get(iso)?.length || 0), 0)
+  const items = (byDay.get(selected) || []).slice().sort((a, b) => a.title.localeCompare(b.title))
+
+  function shift(by: number) {
+    const date = new Date(cursor.year, cursor.month - 1 + by, 1)
+    const next = { year: date.getFullYear(), month: date.getMonth() + 1 }
+    onCursor(next)
+    const [year, month] = selected.split('-').map(Number)
+    if (year !== next.year || month !== next.month) onSelect(isoDay(next.year, next.month, 1))
+  }
+
+  return (
+    <div>
+      <div className="monthbar">
+        <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => shift(-1)}>‹</button>
+        <strong>{monthLabel(cursor.year, cursor.month)}</strong>
+        <button type="button" className="icon-btn" aria-label="Next month" onClick={() => shift(1)}>›</button>
+      </div>
+      <p className="quiet">{monthCount ? `${monthCount} this month` : 'No arrival dates this month.'}</p>
+      <div className="cal" role="grid" aria-label="Arrival calendar">
+        {WEEKDAYS.map((name) => <div key={name} className="cal-dow" role="columnheader">{name}</div>)}
+        {cells.map((day, index) => {
+          if (!day) return <button key={`empty-${index}`} type="button" className="cal-day" disabled tabIndex={-1} aria-hidden="true" />
+          const iso = isoDay(cursor.year, cursor.month, day)
+          const count = byDay.get(iso)?.length || 0
+          return (
+            <button
+              key={iso}
+              type="button"
+              className={iso === today ? 'cal-day is-today' : 'cal-day'}
+              aria-pressed={iso === selected}
+              aria-label={count ? `${prettyDate(iso)}, ${count} ${count === 1 ? 'product' : 'products'}` : prettyDate(iso)}
+              onClick={() => onSelect(iso)}
+            >
+              {day}
+              <span className="cal-mark">{count || ''}</span>
+            </button>
+          )
+        })}
+      </div>
+      <h2 className="release-day">{prettyDate(selected)}</h2>
+      {items.length === 0 ? (
+        <p className="quiet">Nothing arriving this day. Set Arrives when you add or edit a purchase.</p>
+      ) : (
+        <div className="ledger">
+          {items.map((entry) => {
+            const quote = quotes[quoteKey(entry.productId || 0, entry.subtype)]
+            return (
+              <button key={entry.id} type="button" className="lot" onClick={() => openDraft({ mode: 'edit', entry })}>
+                <Thumb src={quote?.imageUrl || photos[entry.id] || null} name={entry.title} />
+                <div>
+                  <p className="row-title">{entry.title}</p>
+                  <p className="row-sub">{[entry.detail, `${entry.quantity} ${entry.quantity === 1 ? 'piece' : 'pieces'}`].filter(Boolean).join(' · ')}</p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; onTrack: () => void }) {
   const { openDraft } = useShop()
   const each = heldMarket(lot, quote)
@@ -136,6 +267,9 @@ function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undef
         <p className="row-sub">
           {[kindLabel(lot.buy), lot.buy.detail, `${lot.remaining} left`, `cost ${money(lot.costLeft)}`].filter(Boolean).join(' · ')}
         </p>
+        {lot.buy.arrivesOn ? (
+          <p className="quiet">{lot.buy.arrivesOn > todayISO() ? 'Arrives' : 'Arrived'} {prettyDate(lot.buy.arrivesOn)}</p>
+        ) : null}
         {lot.buy.trackingNumber ? (
           <p className="quiet">{carrierLabel(lot.buy.trackingCarrier)} · {lot.buy.trackingNumber}</p>
         ) : null}
@@ -190,6 +324,7 @@ function TrackingSheet({ lot, onClose }: { lot: Lot; onClose: () => void }) {
         shopId: lot.buy.shopId,
         trackingNumber: number.trim() || null,
         trackingCarrier: number.trim() ? chosen || 'other' : null,
+        arrivesOn: lot.buy.arrivesOn,
       }, lot.buy.id)
       onClose()
     } catch (err) {

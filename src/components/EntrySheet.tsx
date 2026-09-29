@@ -45,6 +45,7 @@ type FormState = {
   shopId: string | null
   trackingNumber: string
   trackingCarrier: string
+  arrivesOn: string
 }
 
 function blank(partial?: Partial<Entry> & { attachedName?: string }): FormState {
@@ -67,6 +68,7 @@ function blank(partial?: Partial<Entry> & { attachedName?: string }): FormState 
     shopId: partial?.shopId ?? null,
     trackingNumber: partial?.trackingNumber || '',
     trackingCarrier: partial?.trackingCarrier || '',
+    arrivesOn: partial?.arrivesOn || '',
   }
 }
 
@@ -238,6 +240,7 @@ export function EntrySheet() {
     shopId: form.shopId,
     trackingNumber: form.trackingNumber || null,
     trackingCarrier: form.trackingCarrier || null,
+    arrivesOn: form.arrivesOn || null,
     createdAt: '',
   }
   const previewCash = qty ? lineCash(previewEntry) : 0
@@ -289,6 +292,7 @@ export function EntrySheet() {
       shopId: form.direction === 'out' && form.itemKind !== 'fee' ? form.shopId : null,
       trackingNumber: form.direction === 'out' ? form.trackingNumber.trim() || null : null,
       trackingCarrier: form.direction === 'out' && form.trackingNumber.trim() ? form.trackingCarrier || 'other' : null,
+      arrivesOn: form.direction === 'out' && form.itemKind !== 'fee' && /^\d{4}-\d{2}-\d{2}$/.test(form.arrivesOn) ? form.arrivesOn : null,
     }
     setSaving(true)
     try {
@@ -411,6 +415,13 @@ export function EntrySheet() {
           Date
           <input type="date" value={form.occurredOn} onChange={(event) => patch({ occurredOn: event.target.value })} />
         </label>
+        {form.direction === 'out' && form.itemKind !== 'fee' ? (
+          <label className="field">
+            Arrives
+            <input type="date" value={form.arrivesOn} onChange={(event) => patch({ arrivesOn: event.target.value })} />
+            <span className="field-hint">Release day, or the day you expect the package.</span>
+          </label>
+        ) : null}
         {form.direction === 'out' ? (
           <div className="split-fields">
             <label className="field">

@@ -51,6 +51,7 @@ function againRank(again: ShopAgain) {
 export function ShopsPage() {
   const { shops, entries, saveShop, deleteShop } = useShop()
   const [filter, setFilter] = useState<'all' | 'yes' | 'no'>('all')
+  const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Shop | null | 'new'>(null)
   const [form, setForm] = useState<Draft>(EMPTY)
   const [error, setError] = useState<string | null>(null)
@@ -58,11 +59,16 @@ export function ShopsPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase()
     return shops
       .filter((shop) => filter === 'all' || shop.again === filter)
+      .filter((shop) => {
+        if (!needle) return true
+        return `${shop.name} ${shop.whereFrom} ${shop.notes}`.toLowerCase().includes(needle)
+      })
       .slice()
       .sort((a, b) => againRank(a.again) - againRank(b.again) || a.name.localeCompare(b.name))
-  }, [shops, filter])
+  }, [shops, filter, query])
 
   function openNew() {
     setForm(EMPTY)
@@ -130,17 +136,34 @@ export function ShopsPage() {
         <button type="button" className="icon-btn" aria-label="Add a store" onClick={openNew}>+</button>
       </header>
       <p className="quiet">Remember who shipped fast, sent a real card, and is worth buying from again.</p>
+      <label className="field search-field">
+        <span className="sr-only">Search stores</span>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search stores"
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="search"
+        />
+      </label>
       <div className="seg slim" role="group" aria-label="Which stores">
         <button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All</button>
         <button type="button" aria-pressed={filter === 'yes'} onClick={() => setFilter('yes')}>Buy again</button>
         <button type="button" aria-pressed={filter === 'no'} onClick={() => setFilter('no')}>Skip</button>
       </div>
       {visible.length === 0 ? (
-        <div className="empty">
-          <p>{shops.length === 0 ? 'No stores yet.' : 'Nothing in this group.'}</p>
-          <p>Add a shop after an order and mark the shipping, the card, and whether it was legitimate.</p>
-          <button type="button" className="btn" onClick={openNew}>Add a store</button>
-        </div>
+        shops.length === 0 ? (
+          <div className="empty">
+            <p>No stores yet.</p>
+            <p>Add a shop after an order and mark the shipping, the card, and whether it was legitimate.</p>
+            <button type="button" className="btn" onClick={openNew}>Add a store</button>
+          </div>
+        ) : (
+          <p className="quiet">{query.trim() ? 'No stores match that search.' : 'Nothing in this group.'}</p>
+        )
       ) : (
         <div className="ledger">
           {visible.map((shop) => {
