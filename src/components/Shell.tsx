@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import { IconBooks, IconEvents, IconMarket, IconPlus, IconShops, IconStock } from '../icons.tsx'
+import { IconBooks, IconEvents, IconMarket, IconPlus, IconReleases, IconShops, IconStock } from '../icons.tsx'
 import { parseRoute, sectionOf, type Route } from '../lib/route.ts'
 import { supabase } from '../lib/supabase.ts'
 import { useShop } from '../store.tsx'
@@ -9,6 +9,7 @@ import { BooksPage } from '../pages/Books.tsx'
 import { InventoryPage } from '../pages/Inventory.tsx'
 import { MarketPage } from '../pages/Market.tsx'
 import { EventsPage } from '../pages/Events.tsx'
+import { ReleasesPage } from '../pages/Releases.tsx'
 import { ShopsPage } from '../pages/Shops.tsx'
 import { ProductPage } from '../pages/Product.tsx'
 
@@ -56,6 +57,9 @@ export function Shell({
           <a className={section === 'events' ? 'is-active' : ''} href="#/events" aria-current={section === 'events' ? 'page' : undefined}>
             <IconEvents /> Events
           </a>
+          <a className={section === 'releases' ? 'is-active' : ''} href="#/releases" aria-current={section === 'releases' ? 'page' : undefined}>
+            <IconReleases /> Releases
+          </a>
         </nav>
         <div className="side-foot">
           <button type="button" className="text-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
@@ -77,6 +81,7 @@ export function Shell({
         {route.name === 'inventory' ? <InventoryPage /> : null}
         {route.name === 'shops' ? <ShopsPage /> : null}
         {route.name === 'events' ? <EventsPage /> : null}
+        {route.name === 'releases' ? <ReleasesPage /> : null}
         {route.name === 'product' ? <ProductPage productId={route.productId} subtype={route.subtype} /> : null}
       </div>
       <nav className="tabbar" aria-label="Sections">
@@ -94,6 +99,9 @@ export function Shell({
         </a>
         <a className={section === 'events' ? 'is-active' : ''} href="#/events" aria-current={section === 'events' ? 'page' : undefined}>
           <IconEvents /> Events
+        </a>
+        <a className={section === 'releases' ? 'is-active' : ''} href="#/releases" aria-current={section === 'releases' ? 'page' : undefined}>
+          <IconReleases /> Releases
         </a>
         <button type="button" onClick={() => openDraft({ mode: 'create' })}>
           <IconPlus /> Add

@@ -36,6 +36,16 @@ export function IconEvents({ className = 'icon' }: IconProps) {
   )
 }
 
+export function IconReleases({ className = 'icon' }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4.5v6" />
+      <path d="M9.5 8 12 10.5 14.5 8" />
+      <path d="M6.5 11.5h11l-.9 8H7.4l-.9-8Z" />
+    </svg>
+  )
+}
+
 export function IconShops({ className = 'icon' }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true">

@@ -95,16 +95,19 @@ h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); letter-spacing: 
   display: grid;
   justify-items: center;
   gap: 2px;
-  flex: 1 0 68px;
+  flex: 1 0 72px;
   min-height: 56px;
-  padding: 8px 0 6px;
+  padding: 8px 4px 6px;
   border: 0;
   background: transparent;
   color: var(--faint);
   text-decoration: none;
   font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
 }
+.release-day { margin: 22px 0 2px; }
+.release-day span { margin-left: 8px; }
 .tabbar .is-active { color: var(--text); }
 svg.icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 

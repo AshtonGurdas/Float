@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { registerAccount } from './account.js'
 import { bcEvents } from './events.js'
+import { listReleases } from './releases.js'
 import { ingestOne, latestSealed, listSets, picturesFor, productDetail, quotesFor, refreshPrices, search } from './catalog.js'
 import { adminClient, userFromRequest } from './supabase.js'
 
@@ -67,6 +68,15 @@ export async function handleApi(request) {
     } catch (error) {
       console.error(error)
       return json(502, { error: 'Could not load British Columbia events.' })
+    }
+  }
+
+  if (path === '/api/releases' && method === 'GET') {
+    try {
+      return json(200, await listReleases())
+    } catch (error) {
+      console.error(error)
+      return json(502, { error: 'Could not load upcoming releases.' })
     }
   }
 

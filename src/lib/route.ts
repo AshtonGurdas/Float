@@ -4,6 +4,7 @@ export type Route =
   | { name: 'inventory' }
   | { name: 'shops' }
   | { name: 'events' }
+  | { name: 'releases' }
   | { name: 'product'; productId: number; subtype: string | null }
 
 export function parseRoute(hash: string): Route {
@@ -15,6 +16,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'inventory') return { name: 'inventory' }
   if (parts[0] === 'shops') return { name: 'shops' }
   if (parts[0] === 'events') return { name: 'events' }
+  if (parts[0] === 'releases') return { name: 'releases' }
   if (parts[0] === 'product' && parts[1] && Number.isInteger(Number(parts[1]))) {
     return { name: 'product', productId: Number(parts[1]), subtype: params.get('sub') }
   }
@@ -25,6 +27,7 @@ export function sectionOf(route: Route) {
   if (route.name === 'inventory') return 'inventory'
   if (route.name === 'shops') return 'shops'
   if (route.name === 'events') return 'events'
+  if (route.name === 'releases') return 'releases'
   if (route.name === 'market' || route.name === 'product') return 'market'
   return 'books'
 }
