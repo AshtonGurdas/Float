@@ -386,6 +386,10 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 }
 .chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
 .kind-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+.order-line { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.order-line header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.order-line header p { font-weight: 600; }
+.add-line { margin: 12px 0; }
 .stack { display: grid; gap: 8px; margin-top: 18px; }
 .empty { padding: 28px 0; display: grid; gap: 8px; }
 .empty p:first-child { font-size: 1.15rem; }

@@ -20,6 +20,7 @@ export type Entry = {
   trackingNumber: string | null
   trackingCarrier: string | null
   arrivesOn: string | null
+  orderId: string | null
   createdAt: string
 }
 
@@ -34,6 +35,7 @@ export type Lot = {
 }
 
 export function roundMoney(amount: number): number
+export function allocateFees(weights: number[], fee: number): number[]
 export function lineCashCents(entry: Entry): number
 export function lineCash(entry: Entry): number
 export function summarize(entries: Entry[], start?: string, end?: string): { spent: number; made: number; net: number }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { lineCash, monthBounds, monthNets, positions, realized, summarize } from '../shared/books.js'
+import { allocateFees, lineCash, monthBounds, monthNets, positions, realized, summarize } from '../shared/books.js'
 
 function entry(overrides) {
   return {
@@ -61,6 +61,23 @@ test('month chart matches the month cash net', () => {
   assert.equal(nets[7], 15)
   assert.equal(nets[8], -40)
   assert.equal(nets[8], summarize(rows, ...Object.values(monthBounds(2026, 9))).net)
+})
+
+test('shipping on a multi-product order is counted once', () => {
+  const shares = allocateFees([10, 20, 30], 6)
+  assert.deepEqual(shares, [1, 2, 3])
+  const rows = [10, 20, 30].map((price, index) => entry({
+    id: `product-${index}`,
+    title: `Product ${index + 1}`,
+    unitAmount: price,
+    fees: shares[index],
+    orderId: 'order-1',
+  }))
+  assert.equal(summarize(rows, '2026-09-01', '2026-09-30').spent, 66)
+  assert.equal(positions(rows).reduce((sum, lot) => sum + lot.costLeft, 0), 66)
+  const odd = allocateFees([10, 10, 10], 1)
+  assert.equal(odd.reduce((sum, value) => sum + value, 0), 1)
+  assert.deepEqual(allocateFees([0, 0], 5), [2.5, 2.5])
 })
 
 test('fees and misc expenses are not inventory', () => {

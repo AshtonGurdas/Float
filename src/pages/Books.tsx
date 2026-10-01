@@ -125,6 +125,7 @@ export function BooksPage() {
                 if (entry.quantity !== 1) bits.push(`${entry.quantity} × ${money(entry.unitAmount)}`)
                 const shopName = shops.find((shop) => shop.id === entry.shopId)?.name
                 if (shopName) bits.push(shopName)
+                if (entry.orderId) bits.push('Same order')
                 return (
                   <button key={entry.id} type="button" className="row" onClick={() => openDraft({ mode: 'edit', entry })}>
                     <span>

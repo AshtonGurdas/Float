@@ -6,6 +6,40 @@ export function roundMoney(amount) {
   return Math.round(Number(amount) * 100) / 100
 }
 
+export function allocateFees(weights, fee) {
+  const count = Array.isArray(weights) ? weights.length : 0
+  const feeCents = Math.round((Number(fee) || 0) * 100)
+  if (!count) return []
+  if (feeCents <= 0) return Array(count).fill(0)
+  const basis = weights.map((weight) => {
+    const cents = Math.round((Number(weight) || 0) * 100)
+    return cents > 0 ? cents : 0
+  })
+  const total = basis.reduce((sum, value) => sum + value, 0)
+  const shares = Array(count).fill(0)
+  if (!total) {
+    const base = Math.floor(feeCents / count)
+    let left = feeCents - base * count
+    for (let index = 0; index < count; index += 1) {
+      shares[index] = base + (left > 0 ? 1 : 0)
+      if (left > 0) left -= 1
+    }
+  } else {
+    const raw = basis.map((weight) => (feeCents * weight) / total)
+    for (let index = 0; index < count; index += 1) shares[index] = Math.floor(raw[index])
+    let left = feeCents - shares.reduce((sum, value) => sum + value, 0)
+    const order = raw
+      .map((value, index) => ({ index, frac: value - Math.floor(value) }))
+      .sort((a, b) => b.frac - a.frac || a.index - b.index)
+    for (const item of order) {
+      if (left <= 0) break
+      shares[item.index] += 1
+      left -= 1
+    }
+  }
+  return shares.map((cents) => cents / 100)
+}
+
 export function lineCashCents(entry) {
   const gross = Math.round(Number(entry.quantity) * Number(entry.unitAmount) * 100)
   const fees = cents(entry.fees || 0)

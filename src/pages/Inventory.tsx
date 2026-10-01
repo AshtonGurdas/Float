@@ -265,7 +265,7 @@ function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undef
       <div>
         <p className="row-title">{lot.buy.title}</p>
         <p className="row-sub">
-          {[kindLabel(lot.buy), lot.buy.detail, `${lot.remaining} left`, `cost ${money(lot.costLeft)}`].filter(Boolean).join(' · ')}
+          {[kindLabel(lot.buy), lot.buy.detail, `${lot.remaining} left`, `cost ${money(lot.costLeft)}`, lot.buy.orderId ? 'Same order' : ''].filter(Boolean).join(' · ')}
         </p>
         {lot.buy.arrivesOn ? (
           <p className="quiet">{lot.buy.arrivesOn > todayISO() ? 'Arrives' : 'Arrived'} {prettyDate(lot.buy.arrivesOn)}</p>
@@ -325,6 +325,7 @@ function TrackingSheet({ lot, onClose }: { lot: Lot; onClose: () => void }) {
         trackingNumber: number.trim() || null,
         trackingCarrier: number.trim() ? chosen || 'other' : null,
         arrivesOn: lot.buy.arrivesOn,
+        orderId: lot.buy.orderId,
       }, lot.buy.id)
       onClose()
     } catch (err) {

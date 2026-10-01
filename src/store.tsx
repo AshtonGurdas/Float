@@ -23,6 +23,7 @@ type ShopValue = {
   openDraft: (draft: Draft) => void
   closeDraft: () => void
   saveEntry: (input: EntryInput, id?: string) => Promise<void>
+  saveOrder: (items: { input: EntryInput; id?: string }[], removeIds?: string[]) => Promise<void>
   deleteEntry: (id: string) => Promise<void>
   saveShop: (input: Omit<Shop, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => Promise<void>
   deleteShop: (id: string) => Promise<void>
@@ -120,23 +121,49 @@ export function ShopProvider({ session, children }: { session: Session; children
     }
   }, [load])
 
-  const saveEntry = useCallback(async (input: EntryInput, id?: string) => {
+  const saveOrder = useCallback(async (items: { input: EntryInput; id?: string }[], removeIds: string[] = []) => {
     if (!supabase) throw new Error('Supabase is not configured.')
-    const row = entryToRow(input, userId)
-    const query = id
-      ? supabase.from('entries').update(row).eq('id', id).select('*').single()
-      : supabase.from('entries').insert(row).select('*').single()
-    const { data, error: saveError } = await query
-    if (saveError) throw new Error(saveError.message)
-    const next = entryFromRow(data as Parameters<typeof entryFromRow>[0])
-    setEntries((current) => {
-      const without = current.filter((entry) => entry.id !== next.id)
-      return [next, ...without].sort(byDate)
-    })
-    if (next.productId && next.subtype) {
-      loadQuotes([{ productId: next.productId, subtype: next.subtype }]).catch(() => {})
+    const saved: Entry[] = []
+    const creating = items.filter((item) => !item.id)
+    const updating = items.filter((item) => item.id)
+    if (creating.length) {
+      const { data, error: insertError } = await supabase
+        .from('entries')
+        .insert(creating.map((item) => entryToRow(item.input, userId)))
+        .select('*')
+      if (insertError) throw new Error(insertError.message)
+      saved.push(...(data || []).map((row) => entryFromRow(row as Parameters<typeof entryFromRow>[0])))
+    }
+    for (const item of updating) {
+      const { data, error: updateError } = await supabase
+        .from('entries')
+        .update(entryToRow(item.input, userId))
+        .eq('id', item.id)
+        .select('*')
+        .single()
+      if (updateError) throw new Error(updateError.message)
+      saved.push(entryFromRow(data as Parameters<typeof entryFromRow>[0]))
+    }
+    for (const id of removeIds) {
+      const { error: deleteError } = await supabase.from('entries').delete().eq('id', id)
+      if (deleteError) {
+        if (/foreign key|restrict/i.test(deleteError.message)) {
+          throw new Error('Delete the sales of this purchase first.')
+        }
+        throw new Error(deleteError.message)
+      }
+    }
+    const gone = new Set([...saved.map((entry) => entry.id), ...removeIds])
+    setEntries((current) => [...saved, ...current.filter((entry) => !gone.has(entry.id))].sort(byDate))
+    const priced = saved.filter((entry) => entry.productId && entry.subtype)
+    if (priced.length) {
+      loadQuotes(priced.map((entry) => ({ productId: entry.productId as number, subtype: entry.subtype as string }))).catch(() => {})
     }
   }, [loadQuotes, userId])
+
+  const saveEntry = useCallback(async (input: EntryInput, id?: string) => {
+    await saveOrder([{ input, id }])
+  }, [saveOrder])
 
   const saveShop = useCallback(async (input: Omit<Shop, 'id' | 'createdAt' | 'updatedAt'>, id?: string) => {
     if (!supabase) throw new Error('Supabase is not configured.')
@@ -230,6 +257,7 @@ export function ShopProvider({ session, children }: { session: Session; children
     openDraft: setDraft,
     closeDraft: () => setDraft(null),
     saveEntry,
+    saveOrder,
     deleteEntry,
     saveShop,
     deleteShop,
@@ -237,7 +265,7 @@ export function ShopProvider({ session, children }: { session: Session; children
     unwatch,
     refreshMarket,
     quoteFor,
-  }), [entries, shops, watch, quotes, loading, error, draft, saveEntry, deleteEntry, saveShop, deleteShop, watchProduct, unwatch, refreshMarket, quoteFor])
+  }), [entries, shops, watch, quotes, loading, error, draft, saveEntry, saveOrder, deleteEntry, saveShop, deleteShop, watchProduct, unwatch, refreshMarket, quoteFor])
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>
 }

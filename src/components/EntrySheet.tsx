@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { searchProducts, type CatalogProduct } from '../lib/api.ts'
-import { lineCash, positions, roundMoney, type Direction, type Entry, type ItemKind } from '../lib/books.ts'
+import { allocateFees, lineCash, positions, roundMoney, type Direction, type Entry, type ItemKind } from '../lib/books.ts'
 import { GAMES } from '../../shared/games.js'
 import { kindLabel, money, parseMoney, parseQty, todayISO } from '../lib/format.ts'
 import { pickSubtype } from '../lib/market.ts'
@@ -26,64 +26,99 @@ const PLACEHOLDER: Record<ItemKind, string> = {
   other: 'Table at the card show',
 }
 
-type FormState = {
-  direction: Direction
+type LineDraft = {
+  key: string
+  id?: string
   itemKind: ItemKind
   title: string
   detail: string
   quantityText: string
   priceText: string
   priceMode: 'each' | 'total'
-  feesText: string
-  occurredOn: string
-  notes: string
   productId: number | null
   subtype: string | null
   attachedName: string
   boxesText: string
-  lotId: string | null
+  prices: CatalogProduct['prices']
+}
+
+type Shared = {
+  direction: Direction
+  feesText: string
+  occurredOn: string
+  notes: string
   shopId: string | null
   trackingNumber: string
   trackingCarrier: string
   arrivesOn: string
+  lotId: string | null
+  orderId: string | null
 }
 
-function blank(partial?: Partial<Entry> & { attachedName?: string }): FormState {
+function blankLine(partial?: Partial<Entry> & { attachedName?: string; prices?: CatalogProduct['prices'] }): LineDraft {
+  const kind = partial?.itemKind || 'card'
   return {
-    direction: partial?.direction || 'out',
-    itemKind: partial?.itemKind || 'card',
+    key: partial?.id || crypto.randomUUID(),
+    id: partial?.id,
+    itemKind: kind,
     title: partial?.title || '',
     detail: partial?.detail || '',
     quantityText: partial?.quantity != null ? String(partial.quantity) : '1',
     priceText: partial?.unitAmount != null && partial.unitAmount > 0 ? String(partial.unitAmount) : '',
     priceMode: 'each',
-    feesText: partial?.fees ? String(partial.fees) : '',
-    occurredOn: partial?.occurredOn || todayISO(),
-    notes: partial?.notes || '',
     productId: partial?.productId ?? null,
     subtype: partial?.subtype ?? null,
     attachedName: partial?.attachedName || '',
     boxesText: String(partial?.boxesPerCase || 6),
-    lotId: partial?.lotId ?? null,
+    prices: partial?.prices || [],
+  }
+}
+
+function blankShared(partial?: Partial<Entry>, group?: Entry[]): Shared {
+  const fees = group && group.length > 1
+    ? roundMoney(group.reduce((sum, entry) => sum + (Number(entry.fees) || 0), 0))
+    : partial?.fees || 0
+  return {
+    direction: partial?.direction || 'out',
+    feesText: fees ? String(fees) : '',
+    occurredOn: partial?.occurredOn || todayISO(),
+    notes: partial?.notes || '',
     shopId: partial?.shopId ?? null,
     trackingNumber: partial?.trackingNumber || '',
     trackingCarrier: partial?.trackingCarrier || '',
     arrivesOn: partial?.arrivesOn || '',
+    lotId: partial?.lotId ?? null,
+    orderId: group && group.length > 1 ? partial?.orderId || group.find((entry) => entry.orderId)?.orderId || null : partial?.orderId ?? null,
   }
 }
 
+function readLine(line: LineDraft) {
+  const fee = line.itemKind === 'fee'
+  const qty = fee ? 1 : parseQty(line.quantityText)
+  const typed = parseMoney(line.priceText)
+  const unit = typed == null || Number.isNaN(typed) || !qty
+    ? 0
+    : !fee && line.priceMode === 'total'
+      ? roundMoney(typed / qty)
+      : typed
+  return { qty, typed, unit, weight: !fee && qty ? (qty || 0) * unit : 0 }
+}
+
 export function EntrySheet() {
-  const { draft, closeDraft, entries, shops, saveEntry, deleteEntry } = useShop()
-  const [form, setForm] = useState<FormState>(() => blank())
-  const [prices, setPrices] = useState<CatalogProduct['prices']>([])
+  const { draft, closeDraft, entries, shops, saveOrder, deleteEntry } = useShop()
+  const [lines, setLines] = useState<LineDraft[]>(() => [blankLine()])
+  const [shared, setShared] = useState<Shared>(() => blankShared())
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [finder, setFinder] = useState('')
+  const [finderLine, setFinderLine] = useState<string | null>(null)
   const [game, setGame] = useState(() => localStorage.getItem('float.game') || 'pokemon')
   const [hits, setHits] = useState<CatalogProduct[]>([])
   const [finding, setFinding] = useState(false)
-  const [showFinder, setShowFinder] = useState(false)
+  const entriesRef = useRef(entries)
+  const originalIds = useRef<string[]>([])
+  entriesRef.current = entries
 
   useEffect(() => {
     if (!draft) return
@@ -91,15 +126,17 @@ export function EntrySheet() {
     setConfirmDelete(false)
     setHits([])
     setFinder('')
-    setShowFinder(false)
+    setFinderLine(null)
     if (draft.mode === 'edit') {
-      setForm(blank({ ...draft.entry, attachedName: draft.entry.productId ? draft.entry.title : '' }))
-      setPrices([])
+      const group = orderGroup(entriesRef.current, draft.entry)
+      originalIds.current = group.map((entry) => entry.id)
+      setLines(group.map((entry) => blankLine({ ...entry, attachedName: entry.productId ? entry.title : '' })))
+      setShared(blankShared(draft.entry, group))
       return
     }
+    originalIds.current = []
     if (draft.mode === 'sell') {
-      setForm(blank({
-        direction: 'in',
+      setLines([blankLine({
         itemKind: draft.buy.itemKind,
         title: draft.buy.title,
         detail: draft.buy.detail,
@@ -107,16 +144,13 @@ export function EntrySheet() {
         productId: draft.buy.productId,
         subtype: draft.buy.subtype,
         boxesPerCase: draft.buy.boxesPerCase,
-        lotId: draft.buy.id,
-        shopId: null,
         attachedName: draft.buy.productId ? draft.buy.title : '',
-        occurredOn: todayISO(),
-      }))
-      setPrices([])
+      })])
+      setShared(blankShared({ direction: 'in', lotId: draft.buy.id, occurredOn: todayISO(), shopId: null }))
       return
     }
-    setForm(blank(draft.preset))
-    setPrices(draft.preset?.prices || [])
+    setLines([blankLine(draft.preset)])
+    setShared(blankShared(draft.preset))
   }, [draft])
 
   useEffect(() => {
@@ -133,7 +167,7 @@ export function EntrySheet() {
   }, [draft, closeDraft])
 
   useEffect(() => {
-    if (!showFinder) return
+    if (!finderLine) return
     const query = finder.trim()
     if (query.length < 2) {
       setHits([])
@@ -157,10 +191,11 @@ export function EntrySheet() {
       live = false
       window.clearTimeout(timer)
     }
-  }, [finder, game, showFinder])
+  }, [finder, finderLine, game])
 
-  const editingId = draft?.mode === 'edit' ? draft.entry.id : undefined
+  const editing = draft?.mode === 'edit'
   const sellingBuy = draft?.mode === 'sell' ? draft.buy : null
+  const purchase = shared.direction === 'out' && lines.every((line) => line.itemKind !== 'fee')
 
   const maxQty = useMemo(() => {
     if (!draft) return null
@@ -176,127 +211,186 @@ export function EntrySheet() {
 
   if (!draft) return null
 
-  function patch(partial: Partial<FormState>) {
-    setForm((current) => ({ ...current, ...partial }))
+  function soldOf(id: string | undefined) {
+    if (!id) return 0
+    return entries.filter((entry) => entry.lotId === id).reduce((sum, entry) => sum + entry.quantity, 0)
   }
 
-  function chooseKind(itemKind: ItemKind) {
-    if (itemKind === 'fee') patch({ itemKind, direction: 'out', quantityText: '1' })
-    else patch({ itemKind })
+  function patchShared(partial: Partial<Shared>) {
+    setShared((current) => ({ ...current, ...partial }))
+  }
+
+  function updateLine(key: string, partial: Partial<LineDraft>) {
+    setLines((current) => current.map((line) => (line.key === key ? { ...line, ...partial } : line)))
+  }
+
+  function chooseKind(key: string, itemKind: ItemKind) {
+    if (itemKind === 'fee' && lines.length > 1) {
+      setError('A fee is its own entry. Remove the extra products first.')
+      return
+    }
+    updateLine(key, itemKind === 'fee' ? { itemKind, quantityText: '1' } : { itemKind })
+    if (itemKind === 'fee') patchShared({ direction: 'out' })
   }
 
   function chooseDirection(direction: Direction) {
-    if (direction === 'in' && form.itemKind === 'fee') patch({ direction, itemKind: 'other' })
-    else patch({ direction })
-  }
-
-  function switchPriceMode(next: 'each' | 'total') {
-    const qty = parseQty(form.quantityText) || 1
-    const amount = parseMoney(form.priceText)
-    if (amount != null && !Number.isNaN(amount) && qty > 0) {
-      const converted = next === 'total' ? roundMoney(amount * qty) : roundMoney(amount / qty)
-      patch({ priceMode: next, priceText: String(converted) })
+    if (direction === 'in' && lines.length > 1) {
+      setError('Several products in one order is money you spent. Remove the extra products first.')
       return
     }
-    patch({ priceMode: next })
+    if (direction === 'in' && lines[0]?.itemKind === 'fee') {
+      updateLine(lines[0].key, { itemKind: 'other' })
+    }
+    patchShared({ direction })
   }
 
-  function attach(hit: CatalogProduct) {
+  function switchPriceMode(key: string, next: 'each' | 'total') {
+    setLines((current) => current.map((line) => {
+      if (line.key !== key) return line
+      const qty = parseQty(line.quantityText) || 1
+      const amount = parseMoney(line.priceText)
+      if (amount != null && !Number.isNaN(amount) && qty > 0) {
+        const converted = next === 'total' ? roundMoney(amount * qty) : roundMoney(amount / qty)
+        return { ...line, priceMode: next, priceText: String(converted) }
+      }
+      return { ...line, priceMode: next }
+    }))
+  }
+
+  function addLine() {
+    setLines((current) => [...current, blankLine()])
+  }
+
+  function removeLine(key: string) {
+    const line = lines.find((item) => item.key === key)
+    if (line?.id && soldOf(line.id) > 0) {
+      setError('Delete the sales of that product before removing it from the order.')
+      return
+    }
+    setLines((current) => current.filter((item) => item.key !== key))
+    if (finderLine === key) setFinderLine(null)
+  }
+
+  function attach(key: string, hit: CatalogProduct) {
     const subtype = pickSubtype(hit.prices)
-    setPrices(hit.prices)
-    patch({
-      productId: hit.productId,
-      subtype,
-      attachedName: hit.name,
-      title: form.title.trim() ? form.title : hit.number ? `${hit.name} ${hit.number}` : hit.name,
-      detail: form.detail.trim() ? form.detail : hit.setName || '',
-    })
-    setShowFinder(false)
+    setLines((current) => current.map((line) => {
+      if (line.key !== key) return line
+      return {
+        ...line,
+        productId: hit.productId,
+        subtype,
+        attachedName: hit.name,
+        prices: hit.prices,
+        title: line.title.trim() ? line.title : hit.number ? `${hit.name} ${hit.number}` : hit.name,
+        detail: line.detail.trim() ? line.detail : hit.setName || '',
+      }
+    }))
+    setFinderLine(null)
   }
 
-  const qty = parseQty(form.quantityText)
-  const typed = parseMoney(form.priceText)
-  const fees = parseMoney(form.feesText)
-  const unit = typed == null || Number.isNaN(typed) || !qty
-    ? 0
-    : form.priceMode === 'total'
-      ? roundMoney(typed / qty)
-      : typed
-  const previewEntry = {
+  const reads = lines.map(readLine)
+  const fees = lines.some((line) => line.itemKind === 'fee') ? null : parseMoney(shared.feesText)
+  const feesNumber = fees && !Number.isNaN(fees) ? fees : 0
+  const merchandise = reads.reduce((sum, item) => sum + ((item.qty || 0) * item.unit), 0)
+  const first = lines[0]
+  const firstRead = reads[0]
+  const previewEntry: Entry = {
     id: 'preview',
-    direction: form.direction,
-    itemKind: form.itemKind,
-    title: form.title,
-    detail: form.detail,
-    quantity: qty || 0,
-    unitAmount: unit,
-    fees: form.itemKind === 'fee' ? 0 : fees && !Number.isNaN(fees) ? fees : 0,
-    occurredOn: form.occurredOn,
-    notes: form.notes,
-    productId: form.productId,
-    subtype: form.subtype,
-    boxesPerCase: form.itemKind === 'case' ? Number(form.boxesText) || 6 : null,
-    lotId: form.lotId,
-    shopId: form.shopId,
-    trackingNumber: form.trackingNumber || null,
-    trackingCarrier: form.trackingCarrier || null,
-    arrivesOn: form.arrivesOn || null,
+    direction: first?.itemKind === 'fee' ? 'out' : shared.direction,
+    itemKind: first?.itemKind || 'card',
+    title: first?.title || '',
+    detail: first?.detail || '',
+    quantity: firstRead?.qty || 0,
+    unitAmount: firstRead?.unit || 0,
+    fees: first?.itemKind === 'fee' ? 0 : feesNumber,
+    occurredOn: shared.occurredOn,
+    notes: shared.notes,
+    productId: first?.productId ?? null,
+    subtype: first?.subtype ?? null,
+    boxesPerCase: first?.itemKind === 'case' ? Number(first.boxesText) || 6 : null,
+    lotId: shared.lotId,
+    shopId: shared.shopId,
+    trackingNumber: shared.trackingNumber || null,
+    trackingCarrier: shared.trackingCarrier || null,
+    arrivesOn: shared.arrivesOn || null,
+    orderId: shared.orderId,
     createdAt: '',
   }
-  const previewCash = qty ? lineCash(previewEntry) : 0
-  const selectedPrice = prices.find((price) => price.subtype === form.subtype)
+  const previewCash = lines.length > 1 ? roundMoney(merchandise + feesNumber) : firstRead?.qty ? lineCash(previewEntry) : 0
+  const sentence = lines.length > 1
+    ? `Spent ${money(previewCash)} on ${lines.length} products${feesNumber ? `, including ${money(feesNumber)} shipping and tax` : ''}.`
+    : describe(previewEntry, previewCash)
 
   async function onSave() {
     setError(null)
-    if (!form.title.trim()) {
-      setError('Name the card, case, or fee.')
-      return
-    }
-    if (!qty) {
-      setError('Enter a quantity greater than zero.')
-      return
-    }
-    if (typed == null || Number.isNaN(typed)) {
-      setError('Enter the price.')
-      return
-    }
     if (fees != null && Number.isNaN(fees)) {
       setError('Fees should be a dollar amount.')
       return
     }
-    if (maxQty != null && qty > maxQty + 0.0001) {
-      setError(`Only ${maxQty} left on that purchase.`)
-      return
-    }
-    if (draft?.mode === 'edit' && draft.entry.direction === 'out') {
-      const sold = positions(entries).find((lot) => lot.buy.id === draft.entry.id)?.soldQty || 0
-      if (qty + 0.0001 < sold) {
-        setError(`You already sold ${sold}. Quantity can't go below that.`)
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]
+      const parsed = reads[index]
+      if (!line.title.trim()) {
+        setError(lines.length > 1 ? `Name product ${index + 1}.` : 'Name the card, case, or fee.')
+        return
+      }
+      if (!parsed.qty) {
+        setError('Enter a quantity greater than zero.')
+        return
+      }
+      if (parsed.typed == null || Number.isNaN(parsed.typed)) {
+        setError('Enter the price.')
+        return
+      }
+      if (line.id) {
+        const sold = soldOf(line.id)
+        if ((parsed.qty || 0) + 0.0001 < sold) {
+          setError(`You already sold ${sold} of ${line.title}. Quantity can't go below that.`)
+          return
+        }
+      }
+      if (shared.lotId && maxQty != null && (parsed.qty || 0) > maxQty + 0.0001) {
+        setError(`Only ${maxQty} left on that purchase.`)
         return
       }
     }
-    const input: EntryInput = {
-      direction: form.itemKind === 'fee' ? 'out' : form.direction,
-      itemKind: form.itemKind,
-      title: form.title.trim(),
-      detail: form.detail.trim(),
-      quantity: form.itemKind === 'fee' ? 1 : qty,
-      unitAmount: unit,
-      fees: form.itemKind === 'fee' ? 0 : fees || 0,
-      occurredOn: form.occurredOn,
-      notes: form.notes,
-      productId: form.productId,
-      subtype: form.subtype,
-      boxesPerCase: form.itemKind === 'case' ? Math.max(1, Number(form.boxesText) || 6) : null,
-      lotId: form.lotId,
-      shopId: form.direction === 'out' && form.itemKind !== 'fee' ? form.shopId : null,
-      trackingNumber: form.direction === 'out' ? form.trackingNumber.trim() || null : null,
-      trackingCarrier: form.direction === 'out' && form.trackingNumber.trim() ? form.trackingCarrier || 'other' : null,
-      arrivesOn: form.direction === 'out' && form.itemKind !== 'fee' && /^\d{4}-\d{2}-\d{2}$/.test(form.arrivesOn) ? form.arrivesOn : null,
+    const orderId = lines.length > 1 && purchase ? shared.orderId || crypto.randomUUID() : null
+    const shares = lines.length > 1 && purchase ? allocateFees(reads.map((item) => item.weight), feesNumber) : null
+    const items = lines.map((line, index) => {
+      const parsed = reads[index]
+      const feeLine = line.itemKind === 'fee'
+      const input: EntryInput = {
+        direction: feeLine ? 'out' : shared.direction,
+        itemKind: line.itemKind,
+        title: line.title.trim(),
+        detail: feeLine ? '' : line.detail.trim(),
+        quantity: feeLine ? 1 : parsed.qty || 0,
+        unitAmount: parsed.unit,
+        fees: feeLine ? 0 : shares ? shares[index] : feesNumber,
+        occurredOn: shared.occurredOn,
+        notes: shared.notes,
+        productId: feeLine ? null : line.productId,
+        subtype: feeLine ? null : line.subtype,
+        boxesPerCase: line.itemKind === 'case' ? Math.max(1, Number(line.boxesText) || 6) : null,
+        lotId: shared.lotId,
+        shopId: shared.direction === 'out' && !feeLine ? shared.shopId : null,
+        trackingNumber: shared.direction === 'out' ? shared.trackingNumber.trim() || null : null,
+        trackingCarrier: shared.direction === 'out' && shared.trackingNumber.trim() ? shared.trackingCarrier || 'other' : null,
+        arrivesOn: shared.direction === 'out' && !feeLine && /^\d{4}-\d{2}-\d{2}$/.test(shared.arrivesOn) ? shared.arrivesOn : null,
+        orderId,
+      }
+      return { input, id: line.id }
+    })
+    const removeIds = originalIds.current.filter((id) => !lines.some((line) => line.id === id))
+    for (const id of removeIds) {
+      if (soldOf(id) > 0) {
+        setError('Delete the sales of a product before removing it from the order.')
+        return
+      }
     }
     setSaving(true)
     try {
-      await saveEntry(input, editingId)
+      await saveOrder(items, removeIds)
       closeDraft()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save that entry.')
@@ -306,10 +400,18 @@ export function EntrySheet() {
   }
 
   async function onDelete() {
-    if (!editingId) return
+    const ids = lines.map((line) => line.id).filter((id): id is string => Boolean(id))
+    if (!ids.length) return
+    for (const id of ids) {
+      if (soldOf(id) > 0) {
+        setError('Delete the sales of this purchase first.')
+        setConfirmDelete(false)
+        return
+      }
+    }
     setSaving(true)
     try {
-      await deleteEntry(editingId)
+      for (const id of ids) await deleteEntry(id)
       closeDraft()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not delete that entry.')
@@ -317,8 +419,8 @@ export function EntrySheet() {
     }
   }
 
-  const heading = draft.mode === 'sell' ? 'Record a sale' : draft.mode === 'edit' ? 'Edit entry' : 'Add to the books'
-  const sentence = describe(previewEntry, previewCash)
+  const heading = draft.mode === 'sell' ? 'Record a sale' : editing && lines.length > 1 ? 'Edit order' : editing ? 'Edit entry' : 'Add to the books'
+  const canAdd = purchase && draft.mode !== 'sell'
 
   return (
     <div className="backdrop" onMouseDown={closeDraft}>
@@ -338,101 +440,191 @@ export function EntrySheet() {
           <p className="quiet">Selling from {sellingBuy.title}. {maxQty == null ? '' : `${maxQty} still on hand.`}</p>
         ) : (
           <div className="seg" role="group" aria-label="Money direction">
-            <button type="button" aria-pressed={form.direction === 'out'} onClick={() => chooseDirection('out')}>Spent</button>
-            <button type="button" aria-pressed={form.direction === 'in'} onClick={() => chooseDirection('in')}>Made</button>
+            <button type="button" aria-pressed={shared.direction === 'out'} onClick={() => chooseDirection('out')}>Spent</button>
+            <button type="button" aria-pressed={shared.direction === 'in'} onClick={() => chooseDirection('in')}>Made</button>
           </div>
         )}
-        {draft.mode !== 'sell' ? (
-          <div className="kind-grid" role="group" aria-label="What this is">
-            {KINDS.map((kind) => (
-              <button key={kind.id} type="button" className="chip" aria-pressed={form.itemKind === kind.id} onClick={() => chooseKind(kind.id)}>
-                {kind.label}
-              </button>
-            ))}
-          </div>
+        {lines.map((line, index) => {
+          const selectedPrice = line.prices.find((price) => price.subtype === line.subtype)
+          const kinds = lines.length > 1 ? KINDS.filter((kind) => kind.id !== 'fee') : KINDS
+          return (
+            <div key={line.key} className={lines.length > 1 ? 'order-line' : undefined}>
+              {lines.length > 1 ? (
+                <header>
+                  <p>Product {index + 1}</p>
+                  <button type="button" className="text-btn" onClick={() => removeLine(line.key)}>Remove</button>
+                </header>
+              ) : null}
+              {draft.mode !== 'sell' ? (
+                <div className="kind-grid" role="group" aria-label={lines.length > 1 ? `What product ${index + 1} is` : 'What this is'}>
+                  {kinds.map((kind) => (
+                    <button key={kind.id} type="button" className="chip" aria-pressed={line.itemKind === kind.id} onClick={() => chooseKind(line.key, kind.id)}>
+                      {kind.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <label className="field">
+                Name
+                <input
+                  value={line.title}
+                  onChange={(event) => updateLine(line.key, { title: event.target.value })}
+                  placeholder={PLACEHOLDER[line.itemKind]}
+                  autoComplete="off"
+                  maxLength={180}
+                />
+              </label>
+              {line.itemKind !== 'fee' ? (
+                <label className="field">
+                  Details
+                  <input
+                    value={line.detail}
+                    onChange={(event) => updateLine(line.key, { detail: event.target.value })}
+                    placeholder="Set, condition, or where it came from"
+                    autoComplete="off"
+                  />
+                </label>
+              ) : null}
+              {line.itemKind === 'case' ? (
+                <label className="field">
+                  Boxes in the case
+                  <input
+                    inputMode="numeric"
+                    value={line.boxesText}
+                    onChange={(event) => updateLine(line.key, { boxesText: event.target.value.replace(/[^\d]/g, '') })}
+                  />
+                </label>
+              ) : null}
+              {line.itemKind !== 'fee' ? (
+                <div className="split-fields">
+                  <label className="field">
+                    Quantity
+                    <input inputMode="decimal" value={line.quantityText} onChange={(event) => updateLine(line.key, { quantityText: event.target.value })} />
+                  </label>
+                  <label className="field">
+                    {line.priceMode === 'total' ? 'Total price' : 'Price each'}
+                    <input inputMode="decimal" value={line.priceText} onChange={(event) => updateLine(line.key, { priceText: event.target.value })} placeholder="0.00" />
+                  </label>
+                </div>
+              ) : (
+                <label className="field">
+                  Amount
+                  <input inputMode="decimal" value={line.priceText} onChange={(event) => updateLine(line.key, { priceText: event.target.value })} placeholder="0.00" />
+                </label>
+              )}
+              {line.itemKind !== 'fee' && draft.mode !== 'sell' ? (
+                <div className="seg slim" role="group" aria-label="Price is each or total">
+                  <button type="button" aria-pressed={line.priceMode === 'each'} onClick={() => switchPriceMode(line.key, 'each')}>Each</button>
+                  <button type="button" aria-pressed={line.priceMode === 'total'} onClick={() => switchPriceMode(line.key, 'total')}>Total</button>
+                </div>
+              ) : null}
+              {draft.mode !== 'sell' && line.itemKind !== 'fee' ? (
+                <div className="attach">
+                  {line.productId ? (
+                    <div className="attached">
+                      <div>
+                        <strong>{line.attachedName || 'TCGplayer listing'}</strong>
+                        <span>{line.subtype}{selectedPrice?.market != null ? ` · market ${money(selectedPrice.market)}` : ''}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        onClick={() => updateLine(line.key, { productId: null, subtype: null, attachedName: '', prices: [] })}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn ghost" onClick={() => setFinderLine((open) => (open === line.key ? null : line.key))}>
+                      {finderLine === line.key ? 'Hide TCGplayer search' : 'Attach a TCGplayer price'}
+                    </button>
+                  )}
+                  {line.prices.length > 1 && line.productId ? (
+                    <label className="field">
+                      Printing
+                      <select value={line.subtype || ''} onChange={(event) => updateLine(line.key, { subtype: event.target.value })}>
+                        {line.prices.map((price) => (
+                          <option key={price.subtype} value={price.subtype}>
+                            {price.subtype}{price.market != null ? ` · ${money(price.market)}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  {finderLine === line.key && !line.productId ? (
+                    <div className="finder">
+                      <label className="field">
+                        Game
+                        <select
+                          value={game}
+                          onChange={(event) => {
+                            setGame(event.target.value)
+                            localStorage.setItem('float.game', event.target.value)
+                          }}
+                        >
+                          {GAMES.map((item) => (
+                            <option key={item.key} value={item.key}>{item.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        Search TCGplayer
+                        <input value={finder} onChange={(event) => setFinder(event.target.value)} placeholder="Set name and card, or booster box" autoComplete="off" />
+                      </label>
+                      {finding ? <p className="quiet">Searching…</p> : null}
+                      <div className="mini-list">
+                        {hits.slice(0, 8).map((hit) => (
+                          <button key={`${line.key}-${hit.productId}`} type="button" className="mini-result" onClick={() => attach(line.key, hit)}>
+                            <span>{hit.name}</span>
+                            <small>{hit.setName}{hit.sealed ? ' · sealed' : ''}</small>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {lines.length === 1 ? <p className="quiet">Optional. Attach a listing and Stock can compare what you paid with the market.</p> : null}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+        {canAdd ? (
+          <button type="button" className="btn ghost wide add-line" onClick={addLine}>Add another product</button>
         ) : null}
-        <label className="field">
-          Name
-          <input
-            value={form.title}
-            onChange={(event) => patch({ title: event.target.value })}
-            placeholder={PLACEHOLDER[form.itemKind]}
-            autoComplete="off"
-            maxLength={180}
-          />
-        </label>
-        {form.itemKind !== 'fee' ? (
+        {purchase ? (
           <label className="field">
-            Details
-            <input
-              value={form.detail}
-              onChange={(event) => patch({ detail: event.target.value })}
-              placeholder="Set, condition, or where it came from"
-              autoComplete="off"
-            />
+            Extra fees
+            <input inputMode="decimal" value={shared.feesText} onChange={(event) => patchShared({ feesText: event.target.value })} placeholder="Shipping, tax, platform" />
+            {lines.length > 1 ? <span className="field-hint">Shipping and tax for this whole order. Enter it once.</span> : null}
           </label>
-        ) : null}
-        {form.itemKind === 'case' ? (
+        ) : lines.length === 1 && lines[0].itemKind !== 'fee' ? (
           <label className="field">
-            Boxes in the case
-            <input
-              inputMode="numeric"
-              value={form.boxesText}
-              onChange={(event) => patch({ boxesText: event.target.value.replace(/[^\d]/g, '') })}
-            />
-          </label>
-        ) : null}
-        {form.itemKind !== 'fee' ? (
-          <div className="split-fields">
-            <label className="field">
-              Quantity
-              <input inputMode="decimal" value={form.quantityText} onChange={(event) => patch({ quantityText: event.target.value })} />
-            </label>
-            <label className="field">
-              {form.priceMode === 'total' ? 'Total price' : 'Price each'}
-              <input inputMode="decimal" value={form.priceText} onChange={(event) => patch({ priceText: event.target.value })} placeholder="0.00" />
-            </label>
-          </div>
-        ) : (
-          <label className="field">
-            Amount
-            <input inputMode="decimal" value={form.priceText} onChange={(event) => patch({ priceText: event.target.value })} placeholder="0.00" />
-          </label>
-        )}
-        {form.itemKind !== 'fee' && draft.mode !== 'sell' ? (
-          <div className="seg slim" role="group" aria-label="Price is each or total">
-            <button type="button" aria-pressed={form.priceMode === 'each'} onClick={() => switchPriceMode('each')}>Each</button>
-            <button type="button" aria-pressed={form.priceMode === 'total'} onClick={() => switchPriceMode('total')}>Total</button>
-          </div>
-        ) : null}
-        {form.itemKind !== 'fee' ? (
-          <label className="field">
-            {form.direction === 'in' ? 'Fees taken out' : 'Extra fees'}
-            <input inputMode="decimal" value={form.feesText} onChange={(event) => patch({ feesText: event.target.value })} placeholder="Shipping, tax, platform" />
+            Fees taken out
+            <input inputMode="decimal" value={shared.feesText} onChange={(event) => patchShared({ feesText: event.target.value })} placeholder="Shipping, tax, platform" />
           </label>
         ) : null}
         <label className="field">
           Date
-          <input type="date" value={form.occurredOn} onChange={(event) => patch({ occurredOn: event.target.value })} />
+          <input type="date" value={shared.occurredOn} onChange={(event) => patchShared({ occurredOn: event.target.value })} />
         </label>
-        {form.direction === 'out' && form.itemKind !== 'fee' ? (
+        {purchase ? (
           <label className="field">
             Arrives
-            <input type="date" value={form.arrivesOn} onChange={(event) => patch({ arrivesOn: event.target.value })} />
+            <input type="date" value={shared.arrivesOn} onChange={(event) => patchShared({ arrivesOn: event.target.value })} />
             <span className="field-hint">Release day, or the day you expect the package.</span>
           </label>
         ) : null}
-        {form.direction === 'out' ? (
+        {shared.direction === 'out' ? (
           <div className="split-fields">
             <label className="field">
               Tracking number
               <input
-                value={form.trackingNumber}
+                value={shared.trackingNumber}
                 onChange={(event) => {
                   const trackingNumber = event.target.value
-                  patch({
+                  patchShared({
                     trackingNumber,
-                    trackingCarrier: form.trackingCarrier || (trackingNumber.trim() ? guessCarrier(trackingNumber) : ''),
+                    trackingCarrier: shared.trackingCarrier || (trackingNumber.trim() ? guessCarrier(trackingNumber) : ''),
                   })
                 }}
                 placeholder="Optional"
@@ -442,7 +634,7 @@ export function EntrySheet() {
             </label>
             <label className="field">
               Carrier
-              <select value={form.trackingCarrier} onChange={(event) => patch({ trackingCarrier: event.target.value })}>
+              <select value={shared.trackingCarrier} onChange={(event) => patchShared({ trackingCarrier: event.target.value })}>
                 <option value="">Choose</option>
                 {CARRIERS.map((carrier) => (
                   <option key={carrier.id} value={carrier.id}>{carrier.label}</option>
@@ -451,10 +643,10 @@ export function EntrySheet() {
             </label>
           </div>
         ) : null}
-        {form.direction === 'out' && form.itemKind !== 'fee' ? (
+        {purchase ? (
           <label className="field">
             Store
-            <select value={form.shopId || ''} onChange={(event) => patch({ shopId: event.target.value || null })}>
+            <select value={shared.shopId || ''} onChange={(event) => patchShared({ shopId: event.target.value || null })}>
               <option value="">Not linked</option>
               {shops.map((shop) => (
                 <option key={shop.id} value={shop.id}>{shop.name}</option>
@@ -464,97 +656,36 @@ export function EntrySheet() {
         ) : null}
         <label className="field">
           Note
-          <textarea value={form.notes} onChange={(event) => patch({ notes: event.target.value })} rows={2} placeholder="Optional" />
+          <textarea value={shared.notes} onChange={(event) => patchShared({ notes: event.target.value })} rows={2} placeholder="Optional" />
         </label>
-        {draft.mode !== 'sell' && form.itemKind !== 'fee' ? (
-          <div className="attach">
-            {form.productId ? (
-              <div className="attached">
-                <div>
-                  <strong>{form.attachedName || 'TCGplayer listing'}</strong>
-                  <span>{form.subtype}{selectedPrice?.market != null ? ` · market ${money(selectedPrice.market)}` : ''}</span>
-                </div>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => {
-                    setPrices([])
-                    patch({ productId: null, subtype: null, attachedName: '' })
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <button type="button" className="btn ghost" onClick={() => setShowFinder((open) => !open)}>
-                {showFinder ? 'Hide TCGplayer search' : 'Attach a TCGplayer price'}
-              </button>
-            )}
-            {prices.length > 1 && form.productId ? (
-              <label className="field">
-                Printing
-                <select value={form.subtype || ''} onChange={(event) => patch({ subtype: event.target.value })}>
-                  {prices.map((price) => (
-                    <option key={price.subtype} value={price.subtype}>
-                      {price.subtype}{price.market != null ? ` · ${money(price.market)}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            {showFinder && !form.productId ? (
-              <div className="finder">
-                <label className="field">
-                  Game
-                  <select
-                    value={game}
-                    onChange={(event) => {
-                      setGame(event.target.value)
-                      localStorage.setItem('float.game', event.target.value)
-                    }}
-                  >
-                    {GAMES.map((item) => (
-                      <option key={item.key} value={item.key}>{item.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  Search TCGplayer
-                  <input value={finder} onChange={(event) => setFinder(event.target.value)} placeholder="Set name and card, or booster box" autoComplete="off" />
-                </label>
-                {finding ? <p className="quiet">Searching…</p> : null}
-                <div className="mini-list">
-                  {hits.slice(0, 8).map((hit) => (
-                    <button key={hit.productId} type="button" className="mini-result" onClick={() => attach(hit)}>
-                      <span>{hit.name}</span>
-                      <small>{hit.setName}{hit.sealed ? ' · sealed' : ''}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <p className="quiet">Optional. Attach a listing and Stock can compare what you paid with the market.</p>
-          </div>
-        ) : null}
         <p className="preview-line" aria-live="polite">{sentence}</p>
         {error ? <p className="error-text">{error}</p> : null}
         <button type="button" className="btn wide" onClick={onSave} disabled={saving}>
-          {saving ? 'Saving…' : draft.mode === 'sell' ? 'Save sale' : 'Save entry'}
+          {saving ? 'Saving…' : draft.mode === 'sell' ? 'Save sale' : lines.length > 1 ? 'Save order' : 'Save entry'}
         </button>
-        {editingId ? (
+        {editing ? (
           confirmDelete ? (
             <div className="confirm-row">
-              <span>Delete this entry?</span>
+              <span>{lines.length > 1 ? 'Delete this order?' : 'Delete this entry?'}</span>
               <button type="button" className="btn danger" onClick={onDelete} disabled={saving}>Delete</button>
               <button type="button" className="btn ghost" onClick={() => setConfirmDelete(false)}>Keep</button>
             </div>
           ) : (
-            <button type="button" className="btn ghost wide" onClick={() => setConfirmDelete(true)}>Delete entry</button>
+            <button type="button" className="btn ghost wide" onClick={() => setConfirmDelete(true)}>
+              {lines.length > 1 ? 'Delete this order' : 'Delete entry'}
+            </button>
           )
         ) : null}
       </div>
     </div>
   )
+}
+
+function orderGroup(entries: Entry[], entry: Entry) {
+  if (!entry.orderId || entry.direction !== 'out' || entry.lotId) return [entry]
+  const group = entries.filter((item) => item.orderId === entry.orderId && item.direction === 'out' && !item.lotId)
+  if (!group.length) return [entry]
+  return [...group].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
 }
 
 function describe(entry: Entry, cash: number) {

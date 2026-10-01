@@ -21,6 +21,7 @@ type EntryRow = {
   tracking_number: string | null
   tracking_carrier: string | null
   arrives_on: string | null
+  order_id: string | null
   created_at: string
 }
 
@@ -44,6 +45,7 @@ export function entryFromRow(row: EntryRow): Entry {
     trackingNumber: row.tracking_number,
     trackingCarrier: row.tracking_carrier,
     arrivesOn: row.arrives_on,
+    orderId: row.order_id || null,
     createdAt: row.created_at,
   }
 }
@@ -68,6 +70,7 @@ export function entryToRow(entry: EntryInput, userId: string) {
     tracking_number: entry.trackingNumber?.trim() || null,
     tracking_carrier: entry.trackingNumber?.trim() ? entry.trackingCarrier || 'other' : null,
     arrives_on: entry.arrivesOn || null,
+    order_id: entry.orderId || null,
   }
 }
 

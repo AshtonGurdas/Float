@@ -1,4 +1,5 @@
 export {
+  allocateFees,
   lineCash,
   monthBounds,
   monthNets,
