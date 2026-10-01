@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NetBars } from '../components/Chart.tsx'
-import { booksProfit, lineCash, monthBounds, monthProfits, saleTake, summarize, yearProfits } from '../lib/books.ts'
+import { lineCash, monthBounds, monthNets, realized, saleTake, summarize, yearNets } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, movementLabel, prettyDate, signedMoney, tone } from '../lib/format.ts'
 import { useShop } from '../store.tsx'
 
@@ -15,11 +15,11 @@ export function BooksPage() {
 
   const bounds = period === 'month' ? monthBounds(year, month) : period === 'year' ? { start: `${year}-01-01`, end: `${year}-12-31` } : null
   const stats = bounds ? summarize(entries, bounds.start, bounds.end) : summarize(entries)
-  const profit = bounds ? booksProfit(entries, bounds.start, bounds.end) : booksProfit(entries)
+  const profit = bounds ? realized(entries, bounds.start, bounds.end) : realized(entries)
   const buys = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
-  const years = useMemo(() => yearProfits(entries), [entries])
+  const years = useMemo(() => yearNets(entries), [entries])
   const showYears = period === 'all' && years.length > 1
-  const bars = showYears ? years.map((item) => item.profit) : monthProfits(entries, year)
+  const bars = showYears ? years.map((item) => item.net) : monthNets(entries, year)
   const labels = showYears ? years.map((item) => item.year.slice(2)) : MONTHS
   const active = showYears ? years.findIndex((item) => Number(item.year) === year) : period === 'month' ? month - 1 : null
 
@@ -72,9 +72,9 @@ export function BooksPage() {
         <button type="button" className="icon-btn" aria-label="Next" onClick={() => shift(1)} disabled={atFuture || period === 'all'}>›</button>
       </div>
       <div className="hero">
-        <p className="hero-label">Profit</p>
-        <p className={`hero-num num ${tone(profit.total)}`}>{signedMoney(profit.total)}</p>
-        <div className="split">
+        <p className="hero-label">Net</p>
+        <p className={`hero-num num ${tone(stats.net)}`}>{signedMoney(stats.net)}</p>
+        <div className="split three">
           <div>
             <span>Spent</span>
             <strong className="num down">{money(stats.spent)}</strong>
@@ -83,8 +83,12 @@ export function BooksPage() {
             <span>Made</span>
             <strong className="num up">{money(stats.made)}</strong>
           </div>
+          <div>
+            <span>Profit</span>
+            <strong className={`num ${tone(profit.total)}`}>{signedMoney(profit.total)}</strong>
+          </div>
         </div>
-        <p className="quiet">Profit is what you kept after the cost of what you sold. Spent and made are the cash.</p>
+        <p className="quiet">Net is made minus spent. Profit is only what you kept on cards you sold.</p>
       </div>
       <NetBars
         values={bars}

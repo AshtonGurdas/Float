@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateFees, booksProfit, lineCash, monthBounds, monthNets, monthProfits, positions, realized, saleTake, summarize, yearProfits } from '../shared/books.js'
+import { allocateFees, lineCash, monthBounds, monthNets, positions, realized, saleTake, summarize } from '../shared/books.js'
 
 function entry(overrides) {
   return {
@@ -80,24 +80,18 @@ test('shipping on a multi-product order is counted once', () => {
   assert.deepEqual(allocateFees([0, 0], 5), [2.5, 2.5])
 })
 
-test('selling a card profits the price minus what it cost', () => {
-  const buy = entry({ id: 'poro', title: 'Daring Poro', unitAmount: 231, occurredOn: '2026-08-20' })
+test('a down month stays the cash net while sale profit stays separate', () => {
+  const buy = entry({ id: 'poro', title: 'Daring Poro', unitAmount: 231, occurredOn: '2026-09-23' })
   const sale = entry({ id: 'sale', direction: 'in', title: 'Daring Poro', unitAmount: 270, occurredOn: '2026-09-30', lotId: 'poro' })
-  const box = entry({ id: 'box', title: 'Booster box', itemKind: 'box', unitAmount: 100, occurredOn: '2026-09-02' })
+  const box = entry({ id: 'box', title: 'Booster box', itemKind: 'box', unitAmount: 400, occurredOn: '2026-09-02' })
   const rows = [buy, sale, box]
   assert.deepEqual(saleTake(buy, sale), { proceeds: 270, cost: 231, profit: 39 })
-  assert.deepEqual(booksProfit(rows, '2026-09-01', '2026-09-30'), { total: 39, sales: 1 })
-  assert.deepEqual(summarize(rows, '2026-09-01', '2026-09-30'), { spent: 100, made: 270, net: 170 })
-  assert.equal(booksProfit(rows, '2026-08-01', '2026-08-31').total, 0)
-  assert.equal(booksProfit(rows).total, 39)
-  assert.equal(monthProfits(rows, 2026)[7], 0)
-  assert.equal(monthProfits(rows, 2026)[8], 39)
-  assert.deepEqual(yearProfits(rows), [{ year: '2026', profit: 39 }])
-  const shipped = entry({ id: 'shipped', unitAmount: 220, fees: 11, occurredOn: '2026-09-01' })
-  const shippedSale = entry({ id: 'shipped-sale', direction: 'in', unitAmount: 270, occurredOn: '2026-09-30', lotId: 'shipped' })
-  assert.deepEqual(saleTake(shipped, shippedSale), { proceeds: 270, cost: 231, profit: 39 })
-  const fee = entry({ id: 'table', itemKind: 'fee', title: 'Table', unitAmount: 10, occurredOn: '2026-09-30' })
-  assert.equal(booksProfit([buy, sale, fee], '2026-09-01', '2026-09-30').total, 29)
+  assert.deepEqual(realized(rows, '2026-09-01', '2026-09-30'), { total: 39, count: 1 })
+  assert.deepEqual(summarize(rows, '2026-09-01', '2026-09-30'), { spent: 631, made: 270, net: -361 })
+  assert.equal(monthNets(rows, 2026)[8], -361)
+  const tin = entry({ id: 'tin', title: 'Tin', unitAmount: 10, occurredOn: '2026-09-04' })
+  const tinSale = entry({ id: 'tin-sale', direction: 'in', title: 'Tin', unitAmount: 16, occurredOn: '2026-09-30', lotId: 'tin' })
+  assert.equal(realized([...rows, tin, tinSale], '2026-09-01', '2026-09-30').total, 45)
 })
 
 test('fees and misc expenses are not inventory', () => {

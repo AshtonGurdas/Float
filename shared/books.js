@@ -133,40 +133,6 @@ export function saleTake(buy, sale) {
   }
 }
 
-function profitCents(entry, byId) {
-  if (entry.direction === 'in' && entry.lotId) {
-    const taken = saleTakeCents(byId.get(entry.lotId), entry)
-    if (taken) return taken.profit
-    return lineCashCents(entry)
-  }
-  if (entry.direction === 'in') return lineCashCents(entry)
-  if (entry.direction === 'out' && (entry.itemKind === 'fee' || entry.itemKind === 'other')) return -lineCashCents(entry)
-  return 0
-}
-
-export function booksProfit(entries, start, end) {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]))
-  let total = 0
-  let sales = 0
-  for (const entry of entries) {
-    if (!inWindow(entry, start, end)) continue
-    if (entry.direction === 'in' && entry.lotId && saleTakeCents(byId.get(entry.lotId), entry)) sales += 1
-    total += profitCents(entry, byId)
-  }
-  return { total: total / 100, sales }
-}
-
-function profitBuckets(entries, keyOf) {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]))
-  const map = new Map()
-  for (const entry of entries) {
-    const key = keyOf(entry)
-    if (key == null) continue
-    map.set(key, (map.get(key) || 0) + profitCents(entry, byId))
-  }
-  return map
-}
-
 export function realized(entries, start, end) {
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
   let total = 0
@@ -205,23 +171,6 @@ export function yearNets(entries) {
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([year, value]) => ({ year, net: value / 100 }))
-}
-
-export function monthProfits(entries, year) {
-  const prefix = `${year}-`
-  const map = profitBuckets(entries, (entry) => {
-    if (!entry.occurredOn.startsWith(prefix)) return null
-    const month = Number(entry.occurredOn.slice(5, 7)) - 1
-    return month >= 0 && month <= 11 ? month : null
-  })
-  return Array.from({ length: 12 }, (_, month) => (map.get(month) || 0) / 100)
-}
-
-export function yearProfits(entries) {
-  const map = profitBuckets(entries, (entry) => entry.occurredOn.slice(0, 4))
-  return [...map.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([year, cents]) => ({ year, profit: cents / 100 }))
 }
 
 export function monthBounds(year, month) {

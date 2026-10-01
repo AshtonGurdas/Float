@@ -41,11 +41,8 @@ export function lineCash(entry: Entry): number
 export function summarize(entries: Entry[], start?: string, end?: string): { spent: number; made: number; net: number }
 export function positions(entries: Entry[]): Lot[]
 export function saleTake(buy: Entry | undefined, sale: Entry): { proceeds: number; cost: number; profit: number } | null
-export function booksProfit(entries: Entry[], start?: string, end?: string): { total: number; sales: number }
 export function realized(entries: Entry[], start?: string, end?: string): { total: number; count: number }
 export function monthNets(entries: Entry[], year: number): number[]
 export function yearNets(entries: Entry[]): { year: string; net: number }[]
-export function monthProfits(entries: Entry[], year: number): number[]
-export function yearProfits(entries: Entry[]): { year: string; profit: number }[]
 export function monthBounds(year: number, month: number): { start: string; end: string }
 export function yearBounds(year: number): { start: string; end: string }
