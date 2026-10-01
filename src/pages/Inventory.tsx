@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Thumb } from '../components/Thumb.tsx'
 import { picturesFor, type Quote } from '../lib/api.ts'
-import { positions, roundMoney, type Entry, type Lot } from '../lib/books.ts'
+import { lineCash, positions, roundMoney, type Entry, type Lot } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
 import { quoteKey } from '../lib/market.ts'
 import { CARRIERS, carrierLabel, guessCarrier, trackingUrl } from '../../shared/tracking.js'
@@ -19,7 +19,7 @@ export function InventoryPage() {
   const { entries, quotes, openDraft, setError } = useShop()
   const [photos, setPhotos] = useState<Record<string, string>>({})
   const [trackingLot, setTrackingLot] = useState<Lot | null>(null)
-  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [view, setView] = useState<'list' | 'sold' | 'calendar'>('list')
   const today = todayISO()
   const [cursor, setCursor] = useState(() => {
     const [year, month] = todayISO().split('-').map(Number)
@@ -92,7 +92,8 @@ export function InventoryPage() {
         </p>
       </div>
       <div className="seg" role="group" aria-label="Stock view">
-        <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button>
+        <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>On hand</button>
+        <button type="button" aria-pressed={view === 'sold'} onClick={() => setView('sold')}>Sold{closed.length ? ` ${closed.length}` : ''}</button>
         <button type="button" aria-pressed={view === 'calendar'} onClick={() => setView('calendar')}>Calendar</button>
       </div>
       {view === 'calendar' ? (
@@ -126,21 +127,24 @@ export function InventoryPage() {
           ))}
         </div>
       ) : null}
-      {view === 'list' && closed.length > 0 ? (
-        <details className="closed">
-          <summary>Sold through ({closed.length})</summary>
-          <div className="ledger">
-            {closed.map((lot) => (
-              <LotRow
-                key={lot.buy.id}
-                lot={lot}
-                quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
-                photo={photos[lot.buy.id]}
-                onTrack={() => setTrackingLot(lot)}
-              />
-            ))}
-          </div>
-        </details>
+      {view === 'sold' && closed.length === 0 ? (
+        <div className="empty">
+          <p>Nothing sold yet.</p>
+          <p>Sell from a lot on hand. Once it is gone, it stays in this section.</p>
+        </div>
+      ) : null}
+      {view === 'sold' && closed.length > 0 ? (
+        <div className="ledger">
+          {closed.map((lot) => (
+            <LotRow
+              key={lot.buy.id}
+              lot={lot}
+              quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
+              photo={photos[lot.buy.id]}
+              onTrack={() => setTrackingLot(lot)}
+            />
+          ))}
+        </div>
       ) : null}
       {trackingLot ? <TrackingSheet lot={trackingLot} onClose={() => setTrackingLot(null)} /> : null}
     </section>
@@ -258,6 +262,10 @@ function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undef
   const { openDraft } = useShop()
   const each = heldMarket(lot, quote)
   const openValue = each == null ? null : each * lot.remaining - lot.costLeft
+  const soldOut = lot.remaining <= 0
+  const proceeds = roundMoney(lot.sales.reduce((sum, sale) => sum + lineCash(sale), 0))
+  const profit = roundMoney(proceeds - lot.unitCost * lot.soldQty)
+  const bought = roundMoney(lot.unitCost * Number(lot.buy.quantity))
   const image = quote?.imageUrl || photo || null
   return (
     <article className="lot">
@@ -265,7 +273,13 @@ function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undef
       <div>
         <p className="row-title">{lot.buy.title}</p>
         <p className="row-sub">
-          {[kindLabel(lot.buy), lot.buy.detail, `${lot.remaining} left`, `cost ${money(lot.costLeft)}`, lot.buy.orderId ? 'Same order' : ''].filter(Boolean).join(' · ')}
+          {[
+            kindLabel(lot.buy),
+            lot.buy.detail,
+            soldOut ? 'Sold' : `${lot.remaining} left`,
+            soldOut ? `bought ${money(bought)}` : `cost ${money(lot.costLeft)}`,
+            lot.buy.orderId ? 'Same order' : '',
+          ].filter(Boolean).join(' · ')}
         </p>
         {lot.buy.arrivesOn ? (
           <p className="quiet">{lot.buy.arrivesOn > todayISO() ? 'Arrives' : 'Arrived'} {prettyDate(lot.buy.arrivesOn)}</p>
@@ -273,7 +287,9 @@ function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undef
         {lot.buy.trackingNumber ? (
           <p className="quiet">{carrierLabel(lot.buy.trackingCarrier)} · {lot.buy.trackingNumber}</p>
         ) : null}
-        {each == null ? (
+        {soldOut ? (
+          <p className={`quiet ${tone(profit)}`}>Took {money(proceeds)} · {signedMoney(profit)}</p>
+        ) : each == null ? (
           <p className="quiet">No market price on this line.</p>
         ) : (
           <p className={`quiet ${tone(openValue || 0)}`}>
