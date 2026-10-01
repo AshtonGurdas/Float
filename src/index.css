@@ -326,7 +326,8 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 .quote-price { text-align: right; }
 .quote-price .up { color: var(--green); }
 .quote-price .down { color: var(--red); }
-.row-amt { font-weight: 600; }
+.row-amt { font-weight: 600; text-align: right; }
+.row-amt .row-sub { text-align: right; }
 .quote { align-items: stretch; border-bottom: 1px solid var(--line); gap: 8px; }
 .quote-main {
   grid-template-columns: 48px minmax(0, 1fr) 72px auto;

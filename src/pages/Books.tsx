@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NetBars } from '../components/Chart.tsx'
-import { lineCash, monthBounds, monthNets, realized, summarize, yearNets } from '../lib/books.ts'
+import { booksProfit, lineCash, monthBounds, monthProfits, saleTake, summarize, yearProfits } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, movementLabel, prettyDate, signedMoney, tone } from '../lib/format.ts'
 import { useShop } from '../store.tsx'
 
@@ -15,10 +15,11 @@ export function BooksPage() {
 
   const bounds = period === 'month' ? monthBounds(year, month) : period === 'year' ? { start: `${year}-01-01`, end: `${year}-12-31` } : null
   const stats = bounds ? summarize(entries, bounds.start, bounds.end) : summarize(entries)
-  const profit = bounds ? realized(entries, bounds.start, bounds.end) : realized(entries)
-  const years = useMemo(() => yearNets(entries), [entries])
+  const profit = bounds ? booksProfit(entries, bounds.start, bounds.end) : booksProfit(entries)
+  const buys = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
+  const years = useMemo(() => yearProfits(entries), [entries])
   const showYears = period === 'all' && years.length > 1
-  const bars = showYears ? years.map((item) => item.net) : monthNets(entries, year)
+  const bars = showYears ? years.map((item) => item.profit) : monthProfits(entries, year)
   const labels = showYears ? years.map((item) => item.year.slice(2)) : MONTHS
   const active = showYears ? years.findIndex((item) => Number(item.year) === year) : period === 'month' ? month - 1 : null
 
@@ -71,8 +72,8 @@ export function BooksPage() {
         <button type="button" className="icon-btn" aria-label="Next" onClick={() => shift(1)} disabled={atFuture || period === 'all'}>›</button>
       </div>
       <div className="hero">
-        <p className="hero-label">Net</p>
-        <p className={`hero-num num ${tone(stats.net)}`}>{signedMoney(stats.net)}</p>
+        <p className="hero-label">Profit</p>
+        <p className={`hero-num num ${tone(profit.total)}`}>{signedMoney(profit.total)}</p>
         <div className="split">
           <div>
             <span>Spent</span>
@@ -83,13 +84,7 @@ export function BooksPage() {
             <strong className="num up">{money(stats.made)}</strong>
           </div>
         </div>
-        {profit.count > 0 ? (
-          <p className="quiet">
-            Linked sales cleared {signedMoney(profit.total)} versus what those items cost. Spent and made above are the cash itself.
-          </p>
-        ) : (
-          <p className="quiet">Spent is cash out. Made is cash in. Sell from Stock when you want profit on a specific card or case.</p>
-        )}
+        <p className="quiet">Profit is what you kept after the cost of what you sold. Spent and made are the cash.</p>
       </div>
       <NetBars
         values={bars}
@@ -119,10 +114,12 @@ export function BooksPage() {
               <p className="day-label">{prettyDate(date)}</p>
               {rows.map((entry) => {
                 const cash = lineCash(entry)
-                const signed = entry.direction === 'out' ? -cash : cash
+                const take = entry.lotId ? saleTake(buys.get(entry.lotId), entry) : null
+                const signed = take ? take.profit : entry.direction === 'out' ? -cash : cash
                 const bits = [movementLabel(entry), kindLabel(entry)]
                 if (entry.detail) bits.push(entry.detail)
                 if (entry.quantity !== 1) bits.push(`${entry.quantity} × ${money(entry.unitAmount)}`)
+                if (take) bits.push(`cost ${money(take.cost)}`)
                 const shopName = shops.find((shop) => shop.id === entry.shopId)?.name
                 if (shopName) bits.push(shopName)
                 if (entry.orderId) bits.push('Same order')
@@ -132,7 +129,10 @@ export function BooksPage() {
                       <span className="row-title">{entry.title}</span>
                       <span className="row-sub">{bits.join(' · ')}</span>
                     </span>
-                    <span className={`row-amt num ${tone(signed)}`}>{signedMoney(signed)}</span>
+                    <span className="row-amt num">
+                      <span className={tone(signed)}>{signedMoney(signed)}</span>
+                      {take ? <span className="row-sub">took {money(take.proceeds)}</span> : null}
+                    </span>
                   </button>
                 )
               })}

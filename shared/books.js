@@ -114,17 +114,68 @@ export function positions(entries) {
   return lots
 }
 
+function saleTakeCents(buy, sale) {
+  if (!buy || !sale || sale.direction !== 'in' || !sale.lotId) return null
+  const qty = Number(buy.quantity)
+  if (!(qty > 0)) return null
+  const proceeds = lineCashCents(sale)
+  const cost = Math.round((totalCostCents(buy) / qty) * Number(sale.quantity))
+  return { proceeds, cost, profit: proceeds - cost }
+}
+
+export function saleTake(buy, sale) {
+  const taken = saleTakeCents(buy, sale)
+  if (!taken) return null
+  return {
+    proceeds: taken.proceeds / 100,
+    cost: taken.cost / 100,
+    profit: taken.profit / 100,
+  }
+}
+
+function profitCents(entry, byId) {
+  if (entry.direction === 'in' && entry.lotId) {
+    const taken = saleTakeCents(byId.get(entry.lotId), entry)
+    if (taken) return taken.profit
+    return lineCashCents(entry)
+  }
+  if (entry.direction === 'in') return lineCashCents(entry)
+  if (entry.direction === 'out' && (entry.itemKind === 'fee' || entry.itemKind === 'other')) return -lineCashCents(entry)
+  return 0
+}
+
+export function booksProfit(entries, start, end) {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]))
+  let total = 0
+  let sales = 0
+  for (const entry of entries) {
+    if (!inWindow(entry, start, end)) continue
+    if (entry.direction === 'in' && entry.lotId && saleTakeCents(byId.get(entry.lotId), entry)) sales += 1
+    total += profitCents(entry, byId)
+  }
+  return { total: total / 100, sales }
+}
+
+function profitBuckets(entries, keyOf) {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]))
+  const map = new Map()
+  for (const entry of entries) {
+    const key = keyOf(entry)
+    if (key == null) continue
+    map.set(key, (map.get(key) || 0) + profitCents(entry, byId))
+  }
+  return map
+}
+
 export function realized(entries, start, end) {
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
   let total = 0
   let count = 0
   for (const sale of entries) {
-    if (sale.direction !== 'in' || !sale.lotId) continue
     if (!inWindow(sale, start, end)) continue
-    const buy = byId.get(sale.lotId)
-    if (!buy || Number(buy.quantity) <= 0) continue
-    const soldCost = Math.round((totalCostCents(buy) / Number(buy.quantity)) * Number(sale.quantity))
-    total += lineCashCents(sale) - soldCost
+    const taken = saleTakeCents(byId.get(sale.lotId), sale)
+    if (!taken) continue
+    total += taken.profit
     count += 1
   }
   return { total: total / 100, count }
@@ -154,6 +205,23 @@ export function yearNets(entries) {
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([year, value]) => ({ year, net: value / 100 }))
+}
+
+export function monthProfits(entries, year) {
+  const prefix = `${year}-`
+  const map = profitBuckets(entries, (entry) => {
+    if (!entry.occurredOn.startsWith(prefix)) return null
+    const month = Number(entry.occurredOn.slice(5, 7)) - 1
+    return month >= 0 && month <= 11 ? month : null
+  })
+  return Array.from({ length: 12 }, (_, month) => (map.get(month) || 0) / 100)
+}
+
+export function yearProfits(entries) {
+  const map = profitBuckets(entries, (entry) => entry.occurredOn.slice(0, 4))
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([year, cents]) => ({ year, profit: cents / 100 }))
 }
 
 export function monthBounds(year, month) {
