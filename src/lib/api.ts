@@ -39,6 +39,10 @@ export type Quote = {
   mid: number | null
   previous: number | null
   change: number | null
+  lastSold: number | null
+  lastSoldCondition: string | null
+  lastSoldAt: string | null
+  saleKnown: boolean
   updatedOn: string | null
   history: { date: string; market: number }[]
 }
@@ -103,6 +107,11 @@ export function productDetail(id: number, subtype: string | null) {
     previous: number | null
     market: number | null
     updatedOn: string | null
+    change: number | null
+    lastSold: number | null
+    lastSoldCondition: string | null
+    lastSoldAt: string | null
+    saleKnown: boolean
   }>(`/api/product?${query}`)
 }
 

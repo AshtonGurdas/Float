@@ -6,6 +6,13 @@ import { money, signedMoney, signedPct, todayISO, tone } from '../lib/format.ts'
 import { caseMarket, imageLarge } from '../lib/market.ts'
 import { useShop } from '../store.tsx'
 
+function shortDay(iso: string | null) {
+  if (!iso || iso.length < 10) return null
+  const [year, month, day] = iso.slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 const RANGES = [
   { id: '7d', days: 7, label: '1W' },
   { id: '1m', days: 31, label: '1M' },
@@ -19,7 +26,15 @@ export function ProductPage({ productId, subtype }: { productId: number; subtype
   const [product, setProduct] = useState<CatalogProduct | null>(null)
   const [history, setHistory] = useState<{ date: string; market: number }[]>([])
   const [activeSubtype, setActiveSubtype] = useState(subtype || '')
-  const [previous, setPrevious] = useState<number | null>(null)
+  const [sale, setSale] = useState<{
+    productId: number
+    subtype: string
+    lastSold: number | null
+    lastSoldCondition: string | null
+    lastSoldAt: string | null
+    saleKnown: boolean
+    change: number | null
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState('1m')
   const [boxes, setBoxes] = useState(6)
@@ -33,7 +48,15 @@ export function ProductPage({ productId, subtype }: { productId: number; subtype
         if (!live) return
         setProduct(data.product)
         setHistory(data.history)
-        setPrevious(data.previous)
+        setSale({
+          productId,
+          subtype: data.subtype,
+          lastSold: data.lastSold,
+          lastSoldCondition: data.lastSoldCondition,
+          lastSoldAt: data.lastSoldAt,
+          saleKnown: data.saleKnown,
+          change: data.change,
+        })
         setActiveSubtype(data.subtype)
       })
       .catch((err: unknown) => {
@@ -57,8 +80,11 @@ export function ProductPage({ productId, subtype }: { productId: number; subtype
 
   const selected = product.prices.find((price) => price.subtype === activeSubtype) || product.prices[0]
   const market = selected?.market ?? null
-  const change = market != null && previous != null ? Math.round((market - previous) * 100) / 100 : null
-  const pct = change != null && previous ? (change / previous) * 100 : null
+  const shownSale = sale?.productId === productId && sale.subtype === (selected?.subtype || '') ? sale : null
+  const lastSold = shownSale?.lastSold ?? null
+  const change = shownSale?.change ?? null
+  const pct = change != null && market ? (change / market) * 100 : null
+  const soldDay = shortDay(shownSale?.lastSoldAt ?? null)
   const cutoff = RANGES.find((item) => item.id === range)?.days
   const points = cutoff
     ? history.filter((point) => point.date >= new Date(Date.now() - cutoff * 86400000).toISOString().slice(0, 10))
@@ -102,18 +128,29 @@ export function ProductPage({ productId, subtype }: { productId: number; subtype
           ))}
         </div>
       ) : null}
-      <p className={`hero-num num ${tone(change || 0)}`}>{market == null ? '—' : money(market)}</p>
-      <p className={`quiet ${tone(change || 0)}`}>
-        {change == null
-          ? 'First saved price. The move shows up after the next daily update.'
-          : `${signedMoney(change)} (${signedPct(pct)}) since the prior saved day`}
+      <p className="hero-label">Market price</p>
+      <p className="hero-num num">{market == null ? '—' : money(market)}</p>
+      <p className="quiet">
+        {!shownSale
+          ? 'Checking the last sale…'
+          : !shownSale.saleKnown
+            ? 'Last sale unavailable right now.'
+            : lastSold == null
+              ? 'No recent sale for this printing.'
+              : `Last sold ${money(lastSold)}${shownSale.lastSoldCondition ? ` · ${shownSale.lastSoldCondition}` : ''}${soldDay ? ` · ${soldDay}` : ''}`}
       </p>
+      {change != null ? (
+        <p className={`quiet ${tone(change)}`}>
+          {signedMoney(change)} ({signedPct(pct)}) versus market
+        </p>
+      ) : null}
       <div className="seg slim" role="group" aria-label="Chart range">
         {RANGES.map((item) => (
           <button key={item.id} type="button" aria-pressed={range === item.id} onClick={() => setRange(item.id)}>{item.label}</button>
         ))}
       </div>
       <PriceChart points={shown} />
+      <p className="quiet">The chart is the daily market price.</p>
       <div className="split three">
         <div><span>Low</span><strong className="num">{selected?.low == null ? '—' : money(selected.low)}</strong></div>
         <div><span>Market</span><strong className="num">{market == null ? '—' : money(market)}</strong></div>
@@ -167,7 +204,7 @@ export function ProductPage({ productId, subtype }: { productId: number; subtype
           <a className="btn ghost" href={product.url} target="_blank" rel="noreferrer">View on TCGplayer</a>
         ) : null}
       </div>
-      <p className="quiet">TCGplayer’s market price is one number for the printing, not a grade. Newer cards usually sit near recent near-mint sales.</p>
+      <p className="quiet">Market price is TCGplayer’s daily number for this printing, not a grade. Last sold is the newest sale they list for that same printing.</p>
     </section>
   )
 }

@@ -114,7 +114,7 @@ export function MarketPage() {
           {refreshing ? 'Updating…' : 'Update'}
         </button>
       </header>
-      <p className="quiet">Daily TCGplayer market price. Not a live tick — it moves when the day’s prices land.</p>
+      <p className="quiet">Last sold price versus the daily TCGplayer market price. Last sold is the newest sale listed for that printing. Market updates once a day.</p>
       <label className="field search-field">
         <span className="sr-only">Search cards and sealed product</span>
         <input
@@ -143,14 +143,23 @@ export function MarketPage() {
           {watch.length === 0 ? (
             <div className="empty">
               <p>No cards or boxes on the list yet.</p>
-              <p>Search a name, open it, and add it. The day-to-day move starts from the next price update.</p>
+              <p>Search a name, open it, and add it. Each row shows the last sale next to the market price.</p>
             </div>
           ) : (
             <div className="ledger">
               {watch.map((item) => {
                 const quote = quotes[quoteKey(item.productId, item.subtype)]
+                const market = quote?.market ?? null
+                const lastSold = quote?.saleKnown ? quote.lastSold : null
                 const change = quote?.change ?? null
-                const pct = quote && quote.previous ? (change == null ? null : (change / quote.previous) * 100) : null
+                const pct = change != null && market ? (change / market) * 100 : null
+                const lastLine = !quote
+                  ? 'Checking the last sale…'
+                  : !quote.saleKnown
+                    ? 'Last sale unavailable'
+                    : lastSold == null
+                      ? 'No recent sale'
+                      : `Last sold ${money(lastSold)}`
                 return (
                   <div key={item.id} className="quote">
                     <button
@@ -167,10 +176,14 @@ export function MarketPage() {
                       </span>
                       <Spark values={(quote?.history || []).map((point) => point.market)} tone={tone(change || 0)} />
                       <span className="quote-price">
-                        <strong className="num">{quote?.market == null ? '—' : money(quote.market)}</strong>
-                        <span className={`num ${tone(change || 0)}`}>
-                          {change == null ? 'No move yet' : `${signedMoney(change)} ${signedPct(pct) || ''}`}
-                        </span>
+                        <strong className="num">{market == null ? '—' : money(market)}</strong>
+                        <span>Market</span>
+                        <span className="num">{lastLine}</span>
+                        {change != null ? (
+                          <span className={`num ${tone(change)}`}>
+                            {signedMoney(change)} {signedPct(pct) || ''} vs market
+                          </span>
+                        ) : null}
                       </span>
                     </button>
                   </div>

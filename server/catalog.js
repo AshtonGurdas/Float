@@ -1,5 +1,9 @@
 import { gameByKey } from '../shared/games.js'
+import { saleGap } from '../shared/sales.js'
+import { latestSale } from './sales.js'
 import { asNumber, sleep, tcg, utcDay } from './tcg.js'
+
+const SALE_FRESH_MS = 2 * 60 * 60 * 1000
 
 const STOP = new Set(['the', 'of', 'a', 'an', 'and', 'for', 'set', 'tcg', 'card', 'cards', 'from', 'with'])
 const CONDITIONS = new Set(['nm', 'lp', 'mp', 'hp', 'dmg', 'near', 'mint', 'played', 'unopened'])
@@ -651,7 +655,83 @@ export async function refreshPrices(client, { userId, items, allUsers }) {
     updated += 1
     await sleep(120)
   }
+  const priceMap = await pricesFor(client, [...new Set(pairs.map((pair) => pair.productId))])
+  await salesFor(client, pairs, priceMap, { force: true })
   return { updated, groups: limited.length, remaining: Math.max(0, groups.size - limited.length) }
+}
+
+async function mapLimit(items, limit, worker) {
+  const results = new Array(items.length)
+  let next = 0
+  async function run() {
+    while (next < items.length) {
+      const index = next
+      next += 1
+      results[index] = await worker(items[index])
+    }
+  }
+  const workers = Math.min(limit, items.length)
+  if (workers) await Promise.all(Array.from({ length: workers }, () => run()))
+  return results
+}
+
+function storedSale(row) {
+  const checked = row?.last_sold_checked_at ? new Date(row.last_sold_checked_at).getTime() : 0
+  return {
+    fresh: Boolean(checked) && Date.now() - checked < SALE_FRESH_MS,
+    known: Boolean(checked),
+    price: asNumber(row?.last_sold),
+    condition: row?.last_sold_condition || null,
+    soldAt: row?.last_sold_at || null,
+  }
+}
+
+function saleFields(market, sale) {
+  const known = Boolean(sale)
+  const lastSold = known ? asNumber(sale.price) : null
+  return {
+    lastSold,
+    lastSoldCondition: known ? sale.condition || null : null,
+    lastSoldAt: known ? sale.soldAt || null : null,
+    saleKnown: known,
+    change: saleGap(market, lastSold).change,
+  }
+}
+
+async function salesFor(client, pairs, priceMap, { force = false } = {}) {
+  const sales = new Map()
+  const needed = []
+  const seen = new Set()
+  for (const pair of pairs) {
+    const key = `${pair.productId}:${pair.subtype}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const row = (priceMap.get(pair.productId) || []).find((price) => price.subtype === pair.subtype)
+    const saved = storedSale(row)
+    if (!force && saved.fresh) sales.set(key, saved)
+    else needed.push({ pair, key, saved })
+  }
+  await mapLimit(needed, 4, async ({ pair, key, saved }) => {
+    try {
+      const sale = await latestSale(pair.productId, pair.subtype)
+      sales.set(key, sale)
+      const { error } = await client
+        .from('catalog_prices')
+        .update({
+          last_sold: sale.price,
+          last_sold_condition: sale.condition,
+          last_sold_at: sale.soldAt,
+          last_sold_checked_at: new Date().toISOString(),
+        })
+        .eq('product_id', pair.productId)
+        .eq('subtype', pair.subtype)
+      if (error) console.error(error.message || error)
+    } catch (error) {
+      console.error(error)
+      if (saved.known) sales.set(key, saved)
+    }
+  })
+  return sales
 }
 
 function historyFor(rows, subtype) {
@@ -720,19 +800,22 @@ export async function productDetail(client, params) {
   if (error) throw new Error(error.message)
   const history = historyFor(data, subtype)
   const selected = shaped.prices.find((price) => price.subtype === subtype) || null
+  const market = selected?.market ?? null
+  const sales = await salesFor(client, [{ productId, subtype }], priceMap)
   return {
     product: shaped,
     subtype,
     history,
     previous: previousClose(history, today),
-    market: selected?.market ?? null,
+    market,
     updatedOn: selected?.updatedOn || null,
+    ...saleFields(market, sales.get(`${productId}:${subtype}`)),
   }
 }
 
 export async function quotesFor(client, body) {
   const items = (Array.isArray(body.items) ? body.items : [])
-    .map((item) => ({ productId: Number(item.productId), subtype: String(item.subtype || '') }))
+    .map((item) => ({ productId: Number(item.productId), subtype: String(item.subtype || 'Normal') }))
     .filter((item) => Number.isInteger(item.productId) && item.productId > 0)
     .slice(0, 80)
   if (!items.length) return { items: [] }
@@ -754,18 +837,20 @@ export async function quotesFor(client, body) {
     if (error) throw new Error(error.message)
     historyRows.push(...(data || []))
   }
+  const sales = await salesFor(client, items, priceMap)
   const today = utcDay()
   return {
     items: items.map((item) => {
       const product = byId.get(item.productId)
       const prices = (priceMap.get(item.productId) || []).map(shapePrice)
-      const selected = prices.find((price) => price.subtype === item.subtype) || prices.find((price) => price.market != null) || null
-      const history = historyFor(historyRows.filter((row) => row.product_id === item.productId), item.subtype || selected?.subtype)
+      const subtype = item.subtype || 'Normal'
+      const selected = prices.find((price) => price.subtype === subtype) || null
+      const history = historyFor(historyRows.filter((row) => row.product_id === item.productId), subtype)
       const previous = previousClose(history, today)
       const market = selected?.market ?? null
       return {
         productId: item.productId,
-        subtype: item.subtype || selected?.subtype || 'Normal',
+        subtype,
         name: product?.name || 'Unknown product',
         setName: product?.set_name || null,
         imageUrl: product?.image_url || null,
@@ -777,7 +862,7 @@ export async function quotesFor(client, body) {
         low: selected?.low ?? null,
         mid: selected?.mid ?? null,
         previous,
-        change: market != null && previous != null ? Math.round((market - previous) * 100) / 100 : null,
+        ...saleFields(market, sales.get(`${item.productId}:${subtype}`)),
         updatedOn: selected?.updatedOn || null,
         history,
       }

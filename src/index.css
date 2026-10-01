@@ -254,6 +254,8 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 .split span, .bar-label { display: block; color: var(--muted); font-size: 0.78rem; }
 .split strong { display: block; margin-top: 2px; font-size: 1.15rem; }
 .quiet { color: var(--muted); font-size: 0.92rem; line-height: 1.45; margin-top: 10px; }
+.quiet.up { color: var(--green); }
+.quiet.down { color: var(--red); }
 .error-text { color: var(--red); font-size: 0.92rem; margin: 8px 0; }
 .banner {
   display: flex;
@@ -319,6 +321,9 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 }
 .row-title, .quote-price strong { display: block; font-weight: 560; }
 .row-sub, .quote-price span { display: block; color: var(--muted); font-size: 0.84rem; margin-top: 3px; }
+.quote-price { text-align: right; }
+.quote-price .up { color: var(--green); }
+.quote-price .down { color: var(--red); }
 .row-amt { font-weight: 600; }
 .quote { align-items: stretch; border-bottom: 1px solid var(--line); gap: 8px; }
 .quote-main {
