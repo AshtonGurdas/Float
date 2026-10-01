@@ -114,7 +114,7 @@ export function MarketPage() {
           {refreshing ? 'Updating…' : 'Update'}
         </button>
       </header>
-      <p className="quiet">Last sold price versus the daily TCGplayer market price. Last sold is the newest sale listed for that printing. Market updates once a day.</p>
+      <p className="quiet">Last sold price versus the daily TCGplayer market price. Last sold is the newest English sale listed for that printing. Market updates once a day.</p>
       <label className="field search-field">
         <span className="sr-only">Search cards and sealed product</span>
         <input
@@ -158,8 +158,8 @@ export function MarketPage() {
                   : !quote.saleKnown
                     ? 'Last sale unavailable'
                     : lastSold == null
-                      ? 'No recent sale'
-                      : `Last sold ${money(lastSold)}`
+                      ? 'No recent English sale'
+                      : `Last sold ${money(lastSold)}${quote.lastSoldCondition ? ` · ${quote.lastSoldCondition}` : ''}`
                 return (
                   <div key={item.id} className="quote">
                     <button

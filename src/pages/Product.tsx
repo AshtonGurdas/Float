@@ -136,7 +136,7 @@ export function ProductPage({ productId, subtype }: { productId: number; subtype
           : !shownSale.saleKnown
             ? 'Last sale unavailable right now.'
             : lastSold == null
-              ? 'No recent sale for this printing.'
+              ? 'No recent English sale for this printing.'
               : `Last sold ${money(lastSold)}${shownSale.lastSoldCondition ? ` · ${shownSale.lastSoldCondition}` : ''}${soldDay ? ` · ${soldDay}` : ''}`}
       </p>
       {change != null ? (
@@ -204,7 +204,7 @@ export function ProductPage({ productId, subtype }: { productId: number; subtype
           <a className="btn ghost" href={product.url} target="_blank" rel="noreferrer">View on TCGplayer</a>
         ) : null}
       </div>
-      <p className="quiet">Market price is TCGplayer’s daily number for this printing, not a grade. Last sold is the newest sale they list for that same printing.</p>
+      <p className="quiet">Market price is TCGplayer’s daily number for this printing, not a grade. Last sold is the newest English sale they list for that same printing.</p>
     </section>
   )
 }
