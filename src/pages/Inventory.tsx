@@ -243,13 +243,13 @@ function ArrivalCalendar({
           {items.map((entry) => {
             const quote = quotes[quoteKey(entry.productId || 0, entry.subtype)]
             return (
-              <button key={entry.id} type="button" className="lot" onClick={() => openDraft({ mode: 'edit', entry })}>
+              <article key={entry.id} className="lot">
                 <Thumb src={quote?.imageUrl || photos[entry.id] || null} name={entry.title} />
-                <div>
+                <button type="button" className="lot-open" onClick={() => openDraft({ mode: 'edit', entry })}>
                   <p className="row-title">{entry.title}</p>
                   <p className="row-sub">{[entry.detail, `${entry.quantity} ${entry.quantity === 1 ? 'piece' : 'pieces'}`].filter(Boolean).join(' · ')}</p>
-                </div>
-              </button>
+                </button>
+              </article>
             )
           })}
         </div>

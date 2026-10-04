@@ -330,12 +330,28 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 .row-amt .row-sub { text-align: right; }
 .quote { align-items: stretch; border-bottom: 1px solid var(--line); gap: 8px; }
 .quote-main {
-  grid-template-columns: 48px minmax(0, 1fr) 72px auto;
+  flex: 1;
+  width: auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   border-bottom: 0;
   padding: 12px 0;
   min-width: 0;
 }
+.quote-main.has-spark { grid-template-columns: minmax(0, 1fr) 72px auto; }
 .quote .btn { align-self: center; }
+.thumb-btn {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: zoom-in;
+  flex: none;
+}
+.thumb-btn.lg { width: 92px; height: 92px; border-radius: 16px; }
+.thumb-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .thumb {
   width: 48px;
   height: 48px;
@@ -411,6 +427,15 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
 }
+.lot-open {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .lot-actions { grid-column: 2; }
 @media (min-width: 720px) {
   .lot { grid-template-columns: 48px minmax(0, 1fr) auto; }
@@ -457,6 +482,22 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
   align-items: end;
   justify-items: center;
 }
+.photo-backdrop { z-index: 50; align-items: center; padding: 24px; }
+.photo-frame {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  width: min(920px, 100%);
+}
+.photo-frame img {
+  width: auto;
+  height: auto;
+  max-width: min(920px, 92vw);
+  max-height: min(78dvh, 820px);
+  object-fit: contain;
+  border-radius: 16px;
+  background: var(--bg-sink);
+}
 .sheet {
   width: 100%;
   max-height: 92dvh;
@@ -494,7 +535,7 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
   .grab { display: none; }
 }
 @media (max-width: 720px) {
-  .quote-main { grid-template-columns: 48px minmax(0, 1fr) auto; }
+  .quote-main, .quote-main.has-spark { grid-template-columns: minmax(0, 1fr) auto; }
   .spark { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {

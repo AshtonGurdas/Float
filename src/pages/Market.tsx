@@ -162,14 +162,14 @@ export function MarketPage() {
                       : `Last sold ${money(lastSold)}${quote.lastSoldCondition ? ` · ${quote.lastSoldCondition}` : ''}`
                 return (
                   <div key={item.id} className="quote">
+                    <Thumb src={quote?.imageUrl || item.imageUrl} name={item.name} />
                     <button
                       type="button"
-                      className="quote-main"
+                      className="quote-main has-spark"
                       onClick={() => {
                         location.hash = `#/product/${item.productId}?sub=${encodeURIComponent(item.subtype)}`
                       }}
                     >
-                      <Thumb src={quote?.imageUrl || item.imageUrl} name={item.name} />
                       <span>
                         <span className="row-title">{item.name}</span>
                         <span className="row-sub">{[item.setName, item.subtype].filter(Boolean).join(' · ')}</span>
@@ -237,6 +237,7 @@ function ProductList({
         const watching = watch.some((item) => item.productId === product.productId && item.subtype === subtype)
         return (
           <div key={`${product.productId}-${subtype}`} className="quote">
+            <Thumb src={product.imageUrl} name={product.name} />
             <button
               type="button"
               className="quote-main"
@@ -244,7 +245,6 @@ function ProductList({
                 location.hash = `#/product/${product.productId}?sub=${encodeURIComponent(subtype)}`
               }}
             >
-              <Thumb src={product.imageUrl} name={product.name} />
               <span>
                 <span className="row-title">{product.name}</span>
                 <span className="row-sub">

@@ -1,4 +1,5 @@
 import { findPicture, shownImage } from '../shared/art.js'
+import { matchGroup, pickSealed, sealedKind } from '../shared/pictures.js'
 import { gameByKey } from '../shared/games.js'
 import { saleGap } from '../shared/sales.js'
 import { artForRows, loadArt } from './art.js'
@@ -470,11 +471,69 @@ export async function picturesFor(client, body) {
     }
   }
 
-  const art = items.some((item) => /box|case|display|deck|bundle|kit|blister|collection/i.test(item.title))
-    ? await loadArt().catch(() => null)
-    : null
-  const pictures = []
+  const sealedHits = []
   for (const item of items) {
+    if (!sealedKind(item.title)) continue
+    const group = matchGroup(groups, item.title)
+    if (group) sealedHits.push({ item, group })
+  }
+  const groupIds = [...new Set(sealedHits.map((hit) => hit.group.group_id))]
+  let sealedRows = []
+  if (groupIds.length) {
+    const { data, error } = await client
+      .from('catalog_products')
+      .select('name, set_name, image_url, game_key, sealed, group_id, category_id')
+      .in('group_id', groupIds)
+      .eq('sealed', true)
+      .limit(1000)
+    if (error) throw new Error(error.message)
+    sealedRows = data || []
+  }
+  const missingGroups = []
+  const seenGroups = new Set()
+  for (const hit of sealedHits) {
+    const key = `${hit.group.category_id}:${hit.group.group_id}`
+    if (seenGroups.has(key)) continue
+    if (sealedRows.some((row) => row.group_id === hit.group.group_id && row.category_id === hit.group.category_id)) continue
+    seenGroups.add(key)
+    missingGroups.push(hit.group)
+  }
+  for (const group of missingGroups.slice(0, 3)) {
+    const game = gameByKey(group.game_key)
+    if (game) await ingestIfStale(client, game, group)
+  }
+  if (missingGroups.length) {
+    const { data, error } = await client
+      .from('catalog_products')
+      .select('name, set_name, image_url, game_key, sealed, group_id, category_id')
+      .in('group_id', groupIds)
+      .eq('sealed', true)
+      .limit(1000)
+    if (error) throw new Error(error.message)
+    sealedRows = data || []
+  }
+  const needsArt = sealedHits.some((hit) => hit.group.game_key === 'riftbound' || hit.group.game_key === 'onepiece')
+    || items.some((item) => /box|case|display|deck|bundle|kit|blister|collection/i.test(item.title))
+  const art = needsArt ? await loadArt().catch(() => null) : null
+  const pictures = []
+  const pictured = new Set()
+  for (const hit of sealedHits) {
+    const rows = sealedRows.filter((row) => row.group_id === hit.group.group_id && row.category_id === hit.group.category_id)
+    const row = pickSealed(rows, hit.item.title)
+    if (!row) continue
+    const imageUrl = shownImage(art, {
+      game: row.game_key,
+      setName: row.set_name,
+      name: row.name,
+      sealed: true,
+      imageUrl: row.image_url,
+    })
+    if (!imageUrl) continue
+    pictured.add(hit.item.id)
+    pictures.push({ id: hit.item.id, imageUrl, name: row.name, setName: row.set_name })
+  }
+  for (const item of items) {
+    if (pictured.has(item.id)) continue
     const parts = tokensOf(`${item.title} ${item.detail}`).filter((token) => !CONDITIONS.has(token))
     const needed = nameTokens(parts, groups)
     if (!needed.length) continue
@@ -486,7 +545,13 @@ export async function picturesFor(client, body) {
     for (const row of data || []) {
       const name = row.name.toLowerCase()
       if (!needed.every((token) => name.includes(token))) continue
-      const imageUrl = shownImage(art, row)
+      const imageUrl = shownImage(art, {
+        game: row.game_key,
+        setName: row.set_name,
+        name: row.name,
+        sealed: row.sealed,
+        imageUrl: row.image_url,
+      })
       if (!imageUrl) continue
       row.picture = imageUrl
       let score = needed.reduce((sum, token) => sum + token.length, 0)
