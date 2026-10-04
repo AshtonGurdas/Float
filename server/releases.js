@@ -1,4 +1,6 @@
+import { findPicture } from '../shared/art.js'
 import { RELEASE_GAMES, RECENT_DAYS, calendarDate, collapseVariants, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
+import { loadArt } from './art.js'
 import { tcg } from './tcg.js'
 
 const CACHE_MS = 6 * 60 * 60 * 1000
@@ -49,7 +51,12 @@ export async function listReleases() {
   const today = vancouverToday()
   const earliest = shiftDate(today, -RECENT_DAYS)
   const lists = await Promise.all(RELEASE_GAMES.map((game) => gameRows(game, today, earliest)))
-  const products = collapseVariants(sortReleases(lists.flat()))
+  const art = await loadArt().catch(() => null)
+  const products = collapseVariants(sortReleases(lists.flat())).map((row) => {
+    if (row.imageUrl) return row
+    const imageUrl = findPicture(art, row)
+    return imageUrl ? { ...row, imageUrl } : row
+  })
   if (products.length) cache = { at: Date.now(), updatedOn: today, products }
   return { source: 'tcgplayer', updatedOn: today, products }
 }

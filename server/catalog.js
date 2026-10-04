@@ -1,5 +1,7 @@
+import { findPicture, shownImage } from '../shared/art.js'
 import { gameByKey } from '../shared/games.js'
 import { saleGap } from '../shared/sales.js'
+import { artForRows, loadArt } from './art.js'
 import { latestSale } from './sales.js'
 import { asNumber, sleep, tcg, utcDay } from './tcg.js'
 
@@ -68,7 +70,7 @@ function shapePrice(row) {
   }
 }
 
-function shapeProduct(row, prices) {
+function shapeProduct(row, prices, art) {
   return {
     productId: row.product_id,
     categoryId: row.category_id,
@@ -76,7 +78,13 @@ function shapeProduct(row, prices) {
     game: row.game_key,
     name: row.name,
     setName: row.set_name,
-    imageUrl: row.image_url,
+    imageUrl: shownImage(art, {
+      game: row.game_key,
+      setName: row.set_name,
+      name: row.name,
+      sealed: row.sealed,
+      imageUrl: row.image_url,
+    }),
     url: row.tcg_url,
     number: row.number,
     rarity: row.rarity,
@@ -190,11 +198,19 @@ export async function ingestGroup(client, game, group, extraKeys = new Set()) {
     list.push(price.subTypeName)
     subtypesByProduct.set(price.productId, list)
   }
+  const needsArt = (productsPayload.results || []).some((product) => {
+    return Number(product.imageCount) === 0 && isSealed(product) && (game.key === 'onepiece' || game.key === 'riftbound')
+  })
+  const art = needsArt ? await loadArt().catch(() => null) : null
   for (const product of productsPayload.results || []) {
     const number = extended(product, 'Number', 'Card Number')
     const rarity = extended(product, 'Rarity')
     const sealed = isSealed(product)
     const subtypes = subtypesByProduct.get(product.productId) || []
+    const published = Number(product.imageCount) === 0 ? null : (product.imageUrl || null)
+    const official = !published && sealed
+      ? findPicture(art, { game: game.key, setName: group.name, name: product.name, abbreviation: group.abbreviation })
+      : null
     products.set(product.productId, {
       product_id: product.productId,
       category_id: game.categoryId,
@@ -202,7 +218,7 @@ export async function ingestGroup(client, game, group, extraKeys = new Set()) {
       game_key: game.key,
       name: product.name,
       set_name: group.name,
-      image_url: product.imageUrl || null,
+      image_url: published || official || product.imageUrl || null,
       tcg_url: product.url || null,
       number,
       rarity,
@@ -357,6 +373,7 @@ export async function search(client, body) {
     ? await indexMoreSets(client, game, groups)
     : { remainingSets: 0, scanned: 0, shouldContinue: false }
   const rows = parts.length ? await searchRows(client, game, parts, filter) : []
+  const art = await artForRows(rows)
   const priceMap = await pricesFor(client, rows.map((row) => row.product_id))
   const wantsSealed = parts.some((token) => ['box', 'case', 'pack', 'etb', 'tin', 'bundle', 'sealed'].includes(token))
   const results = rows
@@ -370,7 +387,7 @@ export async function search(client, body) {
       return a.row.name.localeCompare(b.row.name)
     })
     .slice(0, 200)
-    .map(({ row }) => shapeProduct(row, priceMap.get(row.product_id)))
+    .map(({ row }) => shapeProduct(row, priceMap.get(row.product_id), art))
 
   const sets = results.length < 5
     ? groups
@@ -453,12 +470,15 @@ export async function picturesFor(client, body) {
     }
   }
 
+  const art = items.some((item) => /box|case|display|deck|bundle|kit|blister|collection/i.test(item.title))
+    ? await loadArt().catch(() => null)
+    : null
   const pictures = []
   for (const item of items) {
     const parts = tokensOf(`${item.title} ${item.detail}`).filter((token) => !CONDITIONS.has(token))
     const needed = nameTokens(parts, groups)
     if (!needed.length) continue
-    let query = client.from('catalog_products').select('name, set_name, image_url, number, search_text').limit(25)
+    let query = client.from('catalog_products').select('name, set_name, image_url, number, search_text, game_key, sealed').limit(25)
     for (const token of needed.slice(0, 4)) query = query.ilike('search_text', `%${token}%`)
     const { data, error } = await query
     if (error) throw new Error(error.message)
@@ -466,7 +486,9 @@ export async function picturesFor(client, body) {
     for (const row of data || []) {
       const name = row.name.toLowerCase()
       if (!needed.every((token) => name.includes(token))) continue
-      if (!row.image_url) continue
+      const imageUrl = shownImage(art, row)
+      if (!imageUrl) continue
+      row.picture = imageUrl
       let score = needed.reduce((sum, token) => sum + token.length, 0)
       const setName = (row.set_name || '').toLowerCase()
       for (const token of parts) {
@@ -478,7 +500,7 @@ export async function picturesFor(client, body) {
     if (!best) continue
     pictures.push({
       id: item.id,
-      imageUrl: best.row.image_url,
+      imageUrl: best.row.picture,
       name: best.row.name,
       setName: best.row.set_name,
     })
@@ -547,11 +569,12 @@ export async function latestSealed(client, gameKey) {
     .limit(80)
   if (error) throw new Error(error.message)
   const rows = data || []
+  const art = await artForRows(rows)
   const priceMap = await pricesFor(client, rows.map((row) => row.product_id))
   const results = rows
     .sort((a, b) => sealedRank(a.name) - sealedRank(b.name) || a.name.localeCompare(b.name))
     .slice(0, 24)
-    .map((row) => shapeProduct(row, priceMap.get(row.product_id)))
+    .map((row) => shapeProduct(row, priceMap.get(row.product_id), art))
   return {
     results,
     sets: sets.map((group) => ({ groupId: group.group_id, name: group.name })),
@@ -787,7 +810,7 @@ export async function productDetail(client, params) {
     priceMap = await pricesFor(client, [productId])
     prices = priceMap.get(productId) || []
   }
-  const shaped = shapeProduct(product, prices)
+  const shaped = shapeProduct(product, prices, await artForRows([product]))
   const subtype = params.get('subtype') || shaped.prices.find((price) => price.market != null)?.subtype || shaped.prices[0]?.subtype || 'Normal'
   await snapshotCached(client, prices.map((price) => ({ productId, subtype: price.subtype })), priceMap)
   const since = new Date(Date.now() - 420 * 86400000).toISOString().slice(0, 10)
@@ -838,6 +861,7 @@ export async function quotesFor(client, body) {
     historyRows.push(...(data || []))
   }
   const sales = await salesFor(client, items, priceMap)
+  const art = await artForRows([...byId.values()])
   const today = utcDay()
   return {
     items: items.map((item) => {
@@ -853,7 +877,13 @@ export async function quotesFor(client, body) {
         subtype,
         name: product?.name || 'Unknown product',
         setName: product?.set_name || null,
-        imageUrl: product?.image_url || null,
+        imageUrl: shownImage(art, {
+          game: product?.game_key,
+          setName: product?.set_name,
+          name: product?.name,
+          sealed: Boolean(product?.sealed),
+          imageUrl: product?.image_url,
+        }),
         url: product?.tcg_url || null,
         sealed: Boolean(product?.sealed),
         game: product?.game_key || null,

@@ -28,6 +28,12 @@ function httpsUrl(value) {
   return text.startsWith('https://') ? text : null
 }
 
+// TCGplayer leaves imageCount at 0 until the file is public. Those CDN URLs answer 403.
+function listedImage(product) {
+  if (!product || Number(product.imageCount) === 0) return null
+  return httpsUrl(product.imageUrl)
+}
+
 export function keepProduct(name) {
   const text = plain(name).toLowerCase()
   if (!text) return false
@@ -74,7 +80,7 @@ function rowFrom(game, group, product, setDate, earliest, today, note) {
     abbreviation: plain(group.abbreviation) || null,
     releasedOn,
     status: releasedOn >= today ? 'coming' : 'out',
-    imageUrl: httpsUrl(product?.imageUrl),
+    imageUrl: listedImage(product),
     url: httpsUrl(product?.url),
     note,
   }
