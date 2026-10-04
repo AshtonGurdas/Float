@@ -340,32 +340,57 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 .quote-main.has-spark { grid-template-columns: minmax(0, 1fr) 72px auto; }
 .quote .btn { align-self: center; }
 .thumb-btn {
+  position: relative;
   display: grid;
   width: 48px;
   height: 48px;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: transparent;
+  background: var(--bg-sink);
   cursor: zoom-in;
   flex: none;
+  overflow: hidden;
 }
 .thumb-btn.lg { width: 92px; height: 92px; border-radius: 16px; }
 .thumb-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .thumb {
   width: 48px;
   height: 48px;
-  border-radius: 10px;
-  object-fit: contain;
-  background: var(--bg-sink);
-  border: 1px solid var(--line);
+  border-radius: 0;
+  object-fit: cover;
+  object-position: center;
+  background: transparent;
+  border: 0;
 }
+.pack-window {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+/* Bandai pack tiles are square files with black side bars. 196% trims those bars. */
+.pack-window img,
+.photo-pack img {
+  display: block;
+  width: 196%;
+  max-width: none;
+  height: auto;
+  margin-left: -48%;
+  border: 0;
+  border-radius: 0;
+}
+.pack-window img { margin-top: -48%; }
 .thumb.letter, .thumb-lg.letter {
   display: grid;
   place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-sink);
   font-family: var(--serif);
   color: var(--gold);
 }
+.thumb-lg.letter { border-radius: 16px; }
 .thumb-lg { width: 92px; height: 92px; border-radius: 16px; font-size: 2rem; }
 .spark { width: 72px; height: 28px; }
 .spark path { fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -487,17 +512,27 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
   display: grid;
   gap: 12px;
   justify-items: center;
-  width: min(920px, 100%);
+  width: max-content;
+  max-width: min(920px, 92vw);
 }
-.photo-frame img {
+.photo-frame > img {
+  display: block;
   width: auto;
   height: auto;
   max-width: min(920px, 92vw);
   max-height: min(78dvh, 820px);
   object-fit: contain;
   border-radius: 16px;
-  background: var(--bg-sink);
 }
+.photo-pack {
+  position: relative;
+  width: min(78vw, 420px, calc(78dvh * 343 / 565));
+  aspect-ratio: 343 / 565;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #fff;
+}
+.photo-pack img { margin-top: -14.6%; }
 .sheet {
   width: 100%;
   max-height: 92dvh;
