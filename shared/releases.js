@@ -1,3 +1,6 @@
+import { codesIn } from './art.js'
+import { sealedKind } from './pictures.js'
+
 export const RELEASE_GAMES = [
   { key: 'pokemon', categoryId: 3, name: 'Pokémon' },
   { key: 'onepiece', categoryId: 68, name: 'One Piece' },
@@ -134,6 +137,137 @@ export function collapseVariants(rows) {
       note: first.note || `${list.length} versions, same date.`,
     }
   })
+}
+
+const DISTRIBUTOR_GAMES = [
+  { code: '2020', key: 'pokemon', name: 'Pokémon' },
+  { code: '2034', key: 'riftbound', name: 'Riftbound' },
+  { code: '2045', key: 'onepiece', name: 'One Piece', own: /one piece/i },
+]
+
+const DISTRIBUTOR_GEAR = /\b(sleeve|sleeves|playmat|binder|portfolio|toploader|deck box)\b/i
+const DISTRIBUTOR_URL = 'https://ca.universaldist.com/pre-orders'
+const SET_WORD = new Set([
+  'booster', 'display', 'bundle', 'collection', 'premium', 'starter', 'extra', 'japanese',
+  'english', 'chinese', 'edition', 'card', 'game', 'tcg', 'box', 'case', 'deck', 'set',
+  'the', 'and', 'vol', 'pack', 'packs', 'event', 'kit', 'anniversary',
+])
+
+function isoDay(value) {
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/)
+  return match ? match[1] : null
+}
+
+function dayNumber(iso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '')
+  if (!match) return null
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000
+}
+
+function codeSet(value) {
+  return new Set(codesIn(value).map((code) => code.replace('-', '')))
+}
+
+function keepDistributor(name) {
+  if (!name || DISTRIBUTOR_GEAR.test(name)) return false
+  if (keepProduct(name)) return true
+  const text = String(name).toLowerCase()
+  if (/anniversary/.test(text) || /\bvault\b/.test(text) || /proving grounds/.test(text)) return true
+  return /\bbooster\b/.test(text) && !/\bbooster pack\b/.test(text)
+}
+
+function distributorTitle(name) {
+  let text = String(name || '').replace(/\s*\([^)]*\)\s*$/, '').trim()
+  text = text.replace(/^ONE PIECE CG\s+/i, '')
+  text = text.replace(/^RIFTBOUND(?::)?\s+LEAGUE OF LEGENDS TCG\s+/i, '')
+  text = text.replace(/^POK[EÉ]MON(?:\s+TCG)?\s+/i, '')
+  text = text.replace(/\s+/g, ' ').trim()
+  if (!text) return plain(name)
+  const titled = text.toLowerCase().replace(/\b([a-z])/g, (letter) => letter.toUpperCase())
+  return titled.replace(/\b(Op|Eb|St|Dp|Peb)-?(\d+)\b/g, (_, prefix, digit) => {
+    const code = prefix.toUpperCase()
+    const padded = digit.length >= 4 ? digit : digit.padStart(2, '0')
+    return `${code}-${padded}`
+  })
+}
+
+function distributorGame(product, group) {
+  const code = String(product?.categoryCode || group?.category || '')
+  const game = DISTRIBUTOR_GAMES.find((item) => item.code === code)
+  if (!game) return null
+  if (game.own && !game.own.test(product?.productName || '')) return null
+  return game
+}
+
+export function distributorRows(groups, today, earliest) {
+  const rows = []
+  for (const group of groups || []) {
+    for (const product of group?.products || []) {
+      const game = distributorGame(product, group)
+      if (!game || !keepDistributor(product.productName)) continue
+      const releasedOn = isoDay(product.releaseDate)
+      if (!releasedOn || releasedOn < earliest) continue
+      const name = distributorTitle(product.productName)
+      if (!name) continue
+      const code = codesIn(name)[0] || codesIn(product.productName)[0] || null
+      const image = product.imageGuid
+        ? `https://ca.universaldist.com/api/v1/images/${product.imageGuid}/raw?size=s`
+        : null
+      rows.push({
+        productId: null,
+        name,
+        game: game.key,
+        gameName: game.name,
+        setName: name,
+        abbreviation: code,
+        releasedOn,
+        status: releasedOn >= today ? 'coming' : 'out',
+        imageUrl: image,
+        url: DISTRIBUTOR_URL,
+        linkLabel: 'Universal Distribution',
+        note: 'Distributor ship date. It can move.',
+      })
+    }
+  }
+  return rows
+}
+
+function releaseKind(name) {
+  const kind = sealedKind(name)
+  if (kind) return kind
+  const text = String(name || '').toLowerCase()
+  if (/\bkit\b/.test(text)) return 'kit'
+  if (/\bvault\b/.test(text)) return 'vault'
+  return ''
+}
+
+function sharesRelease(left, right) {
+  if (left.game !== right.game) return false
+  const leftDay = dayNumber(left.releasedOn)
+  const rightDay = dayNumber(right.releasedOn)
+  if (leftDay == null || rightDay == null || Math.abs(leftDay - rightDay) > 21) return false
+  const leftCodes = codeSet(`${left.name} ${left.abbreviation || ''} ${left.setName || ''}`)
+  const rightCodes = codeSet(`${right.name} ${right.abbreviation || ''}`)
+  for (const code of rightCodes) {
+    if (leftCodes.has(code)) return true
+  }
+  const leftKind = releaseKind(left.name)
+  const rightKind = releaseKind(right.name)
+  if (!leftKind || leftKind !== rightKind) return false
+  const words = String(right.name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((word) => {
+    return word.length >= 4 && !SET_WORD.has(word)
+  })
+  const hay = `${left.name} ${left.setName || ''}`.toLowerCase()
+  return words.some((word) => hay.includes(word))
+}
+
+export function mergeReleases(primary, extra) {
+  const rows = [...(primary || [])]
+  for (const row of extra || []) {
+    if (rows.some((existing) => sharesRelease(existing, row))) continue
+    rows.push(row)
+  }
+  return rows
 }
 
 export function sortReleases(rows) {

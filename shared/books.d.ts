@@ -46,3 +46,6 @@ export function monthNets(entries: Entry[], year: number): number[]
 export function yearNets(entries: Entry[]): { year: string; net: number }[]
 export function monthBounds(year: number, month: number): { start: string; end: string }
 export function yearBounds(year: number): { start: string; end: string }
+export function costGroupKey(title: string): string
+export type AverageCost = { quantity: number; lines: number; fees: number; average: number }
+export function averageCosts(entries: Entry[]): Map<string, AverageCost>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Thumb } from '../components/Thumb.tsx'
 import { picturesFor, type Quote } from '../lib/api.ts'
-import { lineCash, positions, roundMoney, type Entry, type Lot } from '../lib/books.ts'
+import { averageCosts, costGroupKey, lineCash, positions, roundMoney, type AverageCost, type Entry, type Lot } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
 import { quoteKey } from '../lib/market.ts'
 import { CARRIERS, carrierLabel, guessCarrier, trackingUrl } from '../../shared/tracking.js'
@@ -27,6 +27,7 @@ export function InventoryPage() {
   })
   const [selected, setSelected] = useState(todayISO)
   const lots = positions(entries)
+  const averages = averageCosts(entries)
   const photoKey = entries.map((entry) => `${entry.id}:${entry.title}:${entry.detail}`).join('|')
   useEffect(() => {
     let live = true
@@ -122,6 +123,7 @@ export function InventoryPage() {
               lot={lot}
               quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
               photo={photos[lot.buy.id]}
+              average={averages.get(costGroupKey(lot.buy.title))}
               onTrack={() => setTrackingLot(lot)}
             />
           ))}
@@ -141,6 +143,7 @@ export function InventoryPage() {
               lot={lot}
               quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
               photo={photos[lot.buy.id]}
+              average={averages.get(costGroupKey(lot.buy.title))}
               onTrack={() => setTrackingLot(lot)}
             />
           ))}
@@ -258,7 +261,20 @@ function ArrivalCalendar({
   )
 }
 
-function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; onTrack: () => void }) {
+function countText(value: number) {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+function averageLine(average: AverageCost | undefined) {
+  if (!average) return ''
+  if (average.lines > 1 || average.quantity > 1) {
+    return `Average ${money(average.average)} each across ${countText(average.quantity)}, before tax and shipping`
+  }
+  if (average.fees > 0) return `${money(average.average)} each, before tax and shipping`
+  return ''
+}
+
+function LotRow({ lot, quote, photo, average, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; average?: AverageCost; onTrack: () => void }) {
   const { openDraft } = useShop()
   const each = heldMarket(lot, quote)
   const openValue = each == null ? null : each * lot.remaining - lot.costLeft
@@ -266,6 +282,7 @@ function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undef
   const proceeds = roundMoney(lot.sales.reduce((sum, sale) => sum + lineCash(sale), 0))
   const profit = roundMoney(proceeds - lot.unitCost * lot.soldQty)
   const bought = roundMoney(lot.unitCost * Number(lot.buy.quantity))
+  const paid = averageLine(average)
   const image = quote?.imageUrl || photo || null
   return (
     <article className="lot">
@@ -281,6 +298,7 @@ function LotRow({ lot, quote, photo, onTrack }: { lot: Lot; quote: Quote | undef
             lot.buy.orderId ? 'Same order' : '',
           ].filter(Boolean).join(' · ')}
         </p>
+        {paid ? <p className="quiet">{paid}</p> : null}
         {lot.buy.arrivesOn ? (
           <p className="quiet">{lot.buy.arrivesOn > todayISO() ? 'Arrives' : 'Arrived'} {prettyDate(lot.buy.arrivesOn)}</p>
         ) : null}

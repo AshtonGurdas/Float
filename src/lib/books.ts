@@ -1,5 +1,7 @@
 export {
   allocateFees,
+  averageCosts,
+  costGroupKey,
   lineCash,
   monthBounds,
   monthNets,
@@ -11,4 +13,4 @@ export {
   yearBounds,
   yearNets,
 } from '../../shared/books.js'
-export type { Direction, Entry, ItemKind, Lot } from '../../shared/books.js'
+export type { AverageCost, Direction, Entry, ItemKind, Lot } from '../../shared/books.js'

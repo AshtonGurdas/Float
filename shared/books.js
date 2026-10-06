@@ -1,3 +1,5 @@
+import { sealedKind } from './pictures.js'
+
 function cents(amount) {
   return Math.round((Number(amount) || 0) * 100)
 }
@@ -182,4 +184,46 @@ export function monthBounds(year, month) {
 
 export function yearBounds(year) {
   return { start: `${year}-01-01`, end: `${year}-12-31` }
+}
+
+export function costGroupKey(title) {
+  const text = String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  let kind = sealedKind(title)
+  if (/\b\d+\s*x\b/.test(text) && (kind === 'box' || kind === '')) kind = 'case'
+  const name = text
+    .replace(/\b(pokemon|tcg|riftbound|league|of|legends|one|piece|card|game|mega|evolution|booster|box|display|case|bundle|packs|pack|elite|trainer|ultra|premium|collection|center|sleeved|art)\b/g, ' ')
+    .replace(/\b\d+\s*x\b/g, ' ')
+    .replace(/\b\d+\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return `${kind || 'item'}|${name || text}`
+}
+
+export function averageCosts(entries) {
+  const groups = new Map()
+  for (const entry of entries || []) {
+    if (entry.direction !== 'out') continue
+    if (entry.itemKind === 'fee' || entry.itemKind === 'other') continue
+    const quantity = Number(entry.quantity)
+    const unit = Number(entry.unitAmount)
+    if (!(quantity > 0) || !Number.isFinite(unit) || unit < 0) continue
+    const key = costGroupKey(entry.title)
+    const group = groups.get(key) || { quantity: 0, merchandiseCents: 0, feeCents: 0, lines: 0 }
+    group.quantity += quantity
+    group.merchandiseCents += Math.round(quantity * unit * 100)
+    group.feeCents += cents(entry.fees || 0)
+    group.lines += 1
+    groups.set(key, group)
+  }
+  const result = new Map()
+  for (const [key, group] of groups) {
+    if (!(group.quantity > 0)) continue
+    result.set(key, {
+      quantity: Math.round(group.quantity * 1000) / 1000,
+      lines: group.lines,
+      fees: group.feeCents / 100,
+      average: roundMoney(group.merchandiseCents / 100 / group.quantity),
+    })
+  }
+  return result
 }

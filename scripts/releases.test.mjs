@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calendarDate, collapseVariants, keepProduct, productRank, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
+import { calendarDate, collapseVariants, distributorRows, keepProduct, mergeReleases, productRank, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
 
 const pokemon = { key: 'pokemon', categoryId: 3, name: 'Pokémon' }
 
@@ -93,6 +93,90 @@ test('art variants of a tin share one line and one date', () => {
     ['30th Celebration Mini Tin', '2 versions, same date.'],
     ['30th Celebration Mini Tin Display', null],
     ['Delta Reign Booster Box', null],
+  ])
+})
+
+test('distributor preorders add later sets and skip other games and gear', () => {
+  const rows = distributorRows([
+    {
+      category: '2045',
+      products: [
+        { productName: 'ONE PIECE CG OP-19 BOOSTER (12/24/12)', categoryCode: '2045', releaseDate: '2027-03-05', imageGuid: 'abc' },
+        { productName: 'ONE PIECE CG JAPANESE 4TH ANNIVERSARY SET (4)', categoryCode: '2045', releaseDate: '2027-07-02', imageGuid: null },
+        { productName: 'ONE PIECE CG ST39 STARTER DISPLAY (6)', categoryCode: '2045', releaseDate: '2027-04-23' },
+        { productName: 'ONE PIECE CG DP14 DOUBLE PACK SET VOL 14', categoryCode: '2045', releaseDate: '2027-03-05' },
+        { productName: 'ONE PIECE CG SLEEVES SET 18 12CT ASSORTMENT (8)', categoryCode: '2045', releaseDate: '2027-06-04' },
+        { productName: 'GUNDAM CG GD-08 BOOSTER (12/24/12)', categoryCode: '2045', releaseDate: '2027-04-23' },
+        { productName: 'GUNDAM CG ST-15 ULTIMATE DECK 02 6CT DISPLAY (4)', categoryCode: '2045', releaseDate: '2027-04-16' },
+        { productName: 'DIGIMON CG ST27 ADVANCED DECK DIABOROMON (8/6)', categoryCode: '2045', releaseDate: '2027-03-05' },
+        { productName: 'DBS FUSION WORLD ST02 STORY BOOSTER VOL 2 (12/20/12)', categoryCode: '2045', releaseDate: '2027-01-15' },
+      ],
+    },
+    {
+      category: '2034',
+      products: [
+        { productName: 'RIFTBOUND LEAGUE OF LEGENDS TCG LEGACY BOOSTER DISPLAY (14/24/6)', categoryCode: '2034', releaseDate: '2027-01-29' },
+        { productName: 'RIFTBOUND LEAGUE OF LEGENDS TCG LEGACY PLAYMAT #1 (6)', categoryCode: '2034', releaseDate: '2027-01-29' },
+      ],
+    },
+  ], '2026-10-03', '2026-08-19')
+  assert.deepEqual(rows.map((row) => [row.game, row.name, row.releasedOn, row.linkLabel]), [
+    ['onepiece', 'OP-19 Booster', '2027-03-05', 'Universal Distribution'],
+    ['onepiece', 'Japanese 4th Anniversary Set', '2027-07-02', 'Universal Distribution'],
+    ['onepiece', 'ST-39 Starter Display', '2027-04-23', 'Universal Distribution'],
+    ['onepiece', 'DP-14 Double Pack Set Vol 14', '2027-03-05', 'Universal Distribution'],
+    ['riftbound', 'Legacy Booster Display', '2027-01-29', 'Universal Distribution'],
+  ])
+  assert.equal(rows[0].imageUrl, 'https://ca.universaldist.com/api/v1/images/abc/raw?size=s')
+  assert.equal(rows[1].note, 'Distributor ship date. It can move.')
+})
+
+test('a distributor row stays off the list when TCGplayer already has that product', () => {
+  const tcg = [
+    { name: 'Legacy - Booster Display', game: 'riftbound', setName: 'Legacy', abbreviation: 'LGC', releasedOn: '2027-01-29', status: 'coming' },
+    { name: 'The Dominance of God Booster Box', game: 'onepiece', setName: 'The Dominance of God', abbreviation: 'OP18', releasedOn: '2026-11-20', status: 'coming' },
+  ]
+  const extra = distributorRows([
+    {
+      category: '2034',
+      products: [
+        { productName: 'RIFTBOUND LEAGUE OF LEGENDS TCG LEGACY BOOSTER DISPLAY (14/24/6)', categoryCode: '2034', releaseDate: '2027-01-29' },
+        { productName: 'RIFTBOUND LEAGUE OF LEGENDS TCG LEGACY PRE-RIFT EVENT KIT', categoryCode: '2034', releaseDate: '2027-01-22' },
+      ],
+    },
+    {
+      category: '2045',
+      products: [
+        { productName: 'ONE PIECE CG JAPANESE 4TH ANNIVERSARY SET (4)', categoryCode: '2045', releaseDate: '2027-07-02' },
+      ],
+    },
+  ], '2026-10-03', '2026-08-19')
+  const merged = mergeReleases(tcg, extra)
+  assert.deepEqual(merged.map((row) => row.name), [
+    'Legacy - Booster Display',
+    'The Dominance of God Booster Box',
+    'Legacy Pre-Rift Event Kit',
+    'Japanese 4th Anniversary Set',
+  ])
+  const withSameProduct = mergeReleases([
+    ...tcg,
+    { name: 'Legacy - Pre-Rift Event Kit', game: 'riftbound', setName: 'Legacy', abbreviation: 'LGC', releasedOn: '2027-01-29', status: 'coming' },
+    { name: 'Legacy - Vault Bundle', game: 'riftbound', setName: 'Legacy', abbreviation: 'LGC', releasedOn: '2027-01-29', status: 'coming' },
+  ], [
+    ...extra,
+    ...distributorRows([{
+      category: '2034',
+      products: [
+        { productName: 'RIFTBOUND LEAGUE OF LEGENDS TCG LEGACY VAULT', categoryCode: '2034', releaseDate: '2027-01-29' },
+      ],
+    }], '2026-10-03', '2026-08-19'),
+  ])
+  assert.deepEqual(withSameProduct.map((row) => row.name), [
+    'Legacy - Booster Display',
+    'The Dominance of God Booster Box',
+    'Legacy - Pre-Rift Event Kit',
+    'Legacy - Vault Bundle',
+    'Japanese 4th Anniversary Set',
   ])
 })
 

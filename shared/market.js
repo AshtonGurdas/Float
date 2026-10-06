@@ -19,7 +19,10 @@ export function pickSubtype(prices) {
 
 export function imageLarge(url) {
   if (!url) return ''
-  return url.replace('_200w.jpg', '_in_1000x1000.jpg').replace('_200w.png', '_in_1000x1000.png')
+  return url
+    .replace('_200w.jpg', '_in_1000x1000.jpg')
+    .replace('_200w.png', '_in_1000x1000.png')
+    .replace(/([?&]size=)s\b/, '$1l')
 }
 
 export function caseMarket(name, market, boxes) {

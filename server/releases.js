@@ -1,7 +1,9 @@
 import { findPicture } from '../shared/art.js'
-import { RELEASE_GAMES, RECENT_DAYS, calendarDate, collapseVariants, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
+import { RELEASE_GAMES, RECENT_DAYS, calendarDate, collapseVariants, distributorRows, mergeReleases, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
 import { loadArt } from './art.js'
 import { tcg } from './tcg.js'
+
+const DISTRIBUTOR = 'https://ca.universaldist.com/api/v1/en/preorderproducts?limit=2000'
 
 const CACHE_MS = 6 * 60 * 60 * 1000
 let cache = null
@@ -44,19 +46,35 @@ async function gameRows(game, today, earliest) {
   return lists.flat()
 }
 
+async function distributorFeed() {
+  const response = await fetch(DISTRIBUTOR, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Float/1.0 (personal TCG shop books; https://github.com/AshtonGurdas/Float)',
+    },
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!response.ok) throw new Error(`Universal Distribution ${response.status}`)
+  const payload = await response.json()
+  return Array.isArray(payload) ? payload : []
+}
+
 export async function listReleases() {
   if (cache && Date.now() - cache.at < CACHE_MS && cache.products.length) {
     return { source: 'tcgplayer', updatedOn: cache.updatedOn, products: cache.products }
   }
   const today = vancouverToday()
   const earliest = shiftDate(today, -RECENT_DAYS)
-  const lists = await Promise.all(RELEASE_GAMES.map((game) => gameRows(game, today, earliest)))
-  const art = await loadArt().catch(() => null)
-  const products = collapseVariants(sortReleases(lists.flat())).map((row) => {
+  const [lists, art, distributor] = await Promise.all([
+    Promise.all(RELEASE_GAMES.map((game) => gameRows(game, today, earliest))),
+    loadArt().catch(() => null),
+    distributorFeed().then((rows) => ({ ok: true, rows })).catch(() => ({ ok: false, rows: [] })),
+  ])
+  const products = collapseVariants(sortReleases(mergeReleases(lists.flat(), distributorRows(distributor.rows, today, earliest)))).map((row) => {
     if (row.imageUrl) return row
     const imageUrl = findPicture(art, row)
     return imageUrl ? { ...row, imageUrl } : row
   })
-  if (products.length) cache = { at: Date.now(), updatedOn: today, products }
+  if (products.length && distributor.ok) cache = { at: Date.now(), updatedOn: today, products }
   return { source: 'tcgplayer', updatedOn: today, products }
 }

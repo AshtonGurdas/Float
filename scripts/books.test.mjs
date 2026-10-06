@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateFees, lineCash, monthBounds, monthNets, positions, realized, saleTake, summarize } from '../shared/books.js'
+import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, positions, realized, saleTake, summarize } from '../shared/books.js'
 
 function entry(overrides) {
   return {
@@ -92,6 +92,34 @@ test('a down month stays the cash net while sale profit stays separate', () => {
   const tin = entry({ id: 'tin', title: 'Tin', unitAmount: 10, occurredOn: '2026-09-04' })
   const tinSale = entry({ id: 'tin-sale', direction: 'in', title: 'Tin', unitAmount: 16, occurredOn: '2026-09-30', lotId: 'tin' })
   assert.equal(realized([...rows, tin, tinSale], '2026-09-01', '2026-09-30').total, 45)
+})
+
+test('average cost ignores tax and shipping and keeps a case separate', () => {
+  const rows = [
+    entry({ id: 'a', itemKind: 'box', title: 'Riftbound League of Legends Radiance Booster Box', quantity: 2, unitAmount: 90, fees: 15 }),
+    entry({ id: 'b', itemKind: 'box', title: 'Radiance Booster Display', quantity: 1, unitAmount: 120, fees: 0 }),
+    entry({ id: 'c', itemKind: 'case', title: 'Radiance - Booster Display 6x', quantity: 1, unitAmount: 500, fees: 40 }),
+    entry({ id: 'd', itemKind: 'sealed', title: 'Pokemon TCG: Mega Evolution-Delta Reign Booster Bundle (6 Packs)', quantity: 1, unitAmount: 40, fees: 0 }),
+    entry({ id: 'e', itemKind: 'box', title: 'Pokemon TCG: Mega Evolution-Delta Reign Booster Display Box (36 Packs)', quantity: 1, unitAmount: 150, fees: 8 }),
+    entry({ id: 'sale', direction: 'in', title: 'Radiance Booster Box', quantity: 1, unitAmount: 200, lotId: 'a' }),
+    entry({ itemKind: 'fee', title: 'Radiance Booster Box', unitAmount: 12 }),
+  ]
+  assert.equal(costGroupKey(rows[0].title), costGroupKey(rows[1].title))
+  assert.notEqual(costGroupKey(rows[0].title), costGroupKey(rows[2].title))
+  assert.notEqual(costGroupKey(rows[3].title), costGroupKey(rows[4].title))
+  assert.equal(costGroupKey('Pokemon 30th celebration (Day) Ultra-Premium Collection'), 'upc|30th celebration day')
+  assert.notEqual(
+    costGroupKey('Pokemon 30th celebration (Day) Ultra-Premium Collection'),
+    costGroupKey('Pokemon 30th celebration (Night) Ultra-Premium Collection'),
+  )
+  const averages = averageCosts(rows)
+  const radiance = averages.get(costGroupKey(rows[0].title))
+  assert.equal(radiance.average, 100)
+  assert.equal(radiance.quantity, 3)
+  assert.equal(radiance.lines, 2)
+  assert.equal(radiance.fees, 15)
+  assert.equal(averages.get(costGroupKey(rows[2].title)).average, 500)
+  assert.equal(averages.has(costGroupKey('Shipping')), false)
 })
 
 test('fees and misc expenses are not inventory', () => {

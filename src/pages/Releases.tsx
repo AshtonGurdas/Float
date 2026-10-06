@@ -12,6 +12,7 @@ type ReleaseProduct = {
   status: 'coming' | 'out'
   imageUrl: string | null
   url: string | null
+  linkLabel?: string | null
   note: string | null
 }
 
@@ -81,7 +82,7 @@ export function ReleasesPage() {
         </div>
       </header>
       <p className="quiet">
-        New sealed product and the ship date listed on TCGplayer. The list refreshes from their daily catalog. A date can move before the product lands, and anything from the last few weeks stays here marked Out.
+        Ship dates come from TCGplayer when the product is in their catalog, and from Universal Distribution’s preorder list when it is not. A date can move before the product lands, and anything from the last few weeks stays here marked Out.
       </p>
       <div className="chips" role="group" aria-label="Game">
         {GAMES.map((item) => (
@@ -114,7 +115,7 @@ export function ReleasesPage() {
                   <p className="row-title">{item.name}</p>
                   <p className="row-sub">{item.gameName} · {setLabel(item)}</p>
                   {item.note ? <p className="row-sub">{item.note}</p> : null}
-                  {item.url ? <a className="text-btn" href={item.url} target="_blank" rel="noreferrer">TCGplayer</a> : null}
+                  {item.url ? <a className="text-btn" href={item.url} target="_blank" rel="noreferrer">{item.linkLabel || 'TCGplayer'}</a> : null}
                 </div>
               </article>
             </div>
