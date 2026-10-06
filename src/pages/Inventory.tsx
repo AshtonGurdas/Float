@@ -293,7 +293,13 @@ function LotRow({ lot, quote, photo, average, onTrack }: { lot: Lot; quote: Quot
             <div>
               <span>Paid</span>
               <strong className="num">{money(lot.buy.unitAmount)}</strong>
-              <small>each{lot.buy.fees > 0 ? ` · ${money(lot.costLeft)} with shipping` : ''}</small>
+              <small>each</small>
+              {lot.buy.fees > 0 ? (
+                <p className="cost-with num">
+                  <strong>{money(bought)}</strong>
+                  <span>with tax and shipping</span>
+                </p>
+              ) : null}
             </div>
             {showAverage ? (
               <div className="is-average">
