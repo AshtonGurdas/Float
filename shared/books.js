@@ -188,8 +188,7 @@ export function yearBounds(year) {
 
 export function costGroupKey(title) {
   const text = String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-  let kind = sealedKind(title)
-  if (/\b\d+\s*x\b/.test(text) && (kind === 'box' || kind === '')) kind = 'case'
+  const kind = sealedKind(title)
   const name = text
     .replace(/\b(pokemon|tcg|riftbound|league|of|legends|one|piece|card|game|mega|evolution|booster|box|display|case|bundle|packs|pack|elite|trainer|ultra|premium|collection|center|sleeved|art)\b/g, ' ')
     .replace(/\b\d+\s*x\b/g, ' ')
@@ -200,6 +199,11 @@ export function costGroupKey(title) {
 }
 
 export function averageCosts(entries) {
+  const soldByLot = new Map()
+  for (const entry of entries || []) {
+    if (entry.direction !== 'in' || !entry.lotId) continue
+    soldByLot.set(entry.lotId, (soldByLot.get(entry.lotId) || 0) + Number(entry.quantity))
+  }
   const groups = new Map()
   for (const entry of entries || []) {
     if (entry.direction !== 'out') continue
@@ -207,22 +211,25 @@ export function averageCosts(entries) {
     const quantity = Number(entry.quantity)
     const unit = Number(entry.unitAmount)
     if (!(quantity > 0) || !Number.isFinite(unit) || unit < 0) continue
+    const sold = soldByLot.get(entry.id) || 0
+    const remaining = Math.max(0, Math.round((quantity - sold) * 1000) / 1000)
+    if (!(remaining > 0)) continue
     const key = costGroupKey(entry.title)
-    const group = groups.get(key) || { quantity: 0, merchandiseCents: 0, feeCents: 0, lines: 0 }
-    group.quantity += quantity
-    group.merchandiseCents += Math.round(quantity * unit * 100)
+    const group = groups.get(key) || { quantity: 0, priceCents: 0, feeCents: 0, lines: 0 }
+    group.quantity += remaining
+    group.priceCents += Math.round(unit * 100)
     group.feeCents += cents(entry.fees || 0)
     group.lines += 1
     groups.set(key, group)
   }
   const result = new Map()
   for (const [key, group] of groups) {
-    if (!(group.quantity > 0)) continue
+    if (!(group.lines > 0)) continue
     result.set(key, {
       quantity: Math.round(group.quantity * 1000) / 1000,
       lines: group.lines,
       fees: group.feeCents / 100,
-      average: roundMoney(group.merchandiseCents / 100 / group.quantity),
+      average: roundMoney(group.priceCents / 100 / group.lines),
     })
   }
   return result

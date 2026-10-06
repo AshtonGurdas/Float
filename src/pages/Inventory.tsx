@@ -143,7 +143,6 @@ export function InventoryPage() {
               lot={lot}
               quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
               photo={photos[lot.buy.id]}
-              average={averages.get(costGroupKey(lot.buy.title))}
               onTrack={() => setTrackingLot(lot)}
             />
           ))}
@@ -267,8 +266,9 @@ function countText(value: number) {
 
 function averageLine(average: AverageCost | undefined) {
   if (!average) return ''
-  if (average.lines > 1 || average.quantity > 1) {
-    return `Average ${money(average.average)} each across ${countText(average.quantity)}, before tax and shipping`
+  if (average.lines > 1) {
+    const purchases = `${countText(average.lines)} purchases`
+    return `Average ${money(average.average)} each across ${purchases}, ${countText(average.quantity)} on hand, before tax and shipping`
   }
   if (average.fees > 0) return `${money(average.average)} each, before tax and shipping`
   return ''
