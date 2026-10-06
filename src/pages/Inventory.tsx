@@ -264,16 +264,6 @@ function countText(value: number) {
   return String(Math.round(value * 1000) / 1000)
 }
 
-function averageLine(average: AverageCost | undefined) {
-  if (!average) return ''
-  if (average.lines > 1) {
-    const purchases = `${countText(average.lines)} purchases`
-    return `Average ${money(average.average)} each across ${purchases}, ${countText(average.quantity)} on hand, before tax and shipping`
-  }
-  if (average.fees > 0) return `${money(average.average)} each, before tax and shipping`
-  return ''
-}
-
 function LotRow({ lot, quote, photo, average, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; average?: AverageCost; onTrack: () => void }) {
   const { openDraft } = useShop()
   const each = heldMarket(lot, quote)
@@ -282,7 +272,7 @@ function LotRow({ lot, quote, photo, average, onTrack }: { lot: Lot; quote: Quot
   const proceeds = roundMoney(lot.sales.reduce((sum, sale) => sum + lineCash(sale), 0))
   const profit = roundMoney(proceeds - lot.unitCost * lot.soldQty)
   const bought = roundMoney(lot.unitCost * Number(lot.buy.quantity))
-  const paid = averageLine(average)
+  const showAverage = !soldOut && !!average && average.lines > 1
   const image = quote?.imageUrl || photo || null
   return (
     <article className="lot">
@@ -294,11 +284,26 @@ function LotRow({ lot, quote, photo, average, onTrack }: { lot: Lot; quote: Quot
             kindLabel(lot.buy),
             lot.buy.detail,
             soldOut ? 'Sold' : `${lot.remaining} left`,
-            soldOut ? `bought ${money(bought)}` : `cost ${money(lot.costLeft)}`,
+            soldOut ? `bought ${money(bought)}` : '',
             lot.buy.orderId ? 'Same order' : '',
           ].filter(Boolean).join(' · ')}
         </p>
-        {paid ? <p className="quiet">{paid}</p> : null}
+        {soldOut ? null : (
+          <div className="cost-pair">
+            <div>
+              <span>Paid</span>
+              <strong className="num">{money(lot.buy.unitAmount)}</strong>
+              <small>each{lot.buy.fees > 0 ? ` · ${money(lot.costLeft)} with shipping` : ''}</small>
+            </div>
+            {showAverage ? (
+              <div className="is-average">
+                <span>Average</span>
+                <strong className="num">{money(average.average)}</strong>
+                <small>{countText(average.lines)} purchases · {countText(average.quantity)} on hand, before tax and shipping</small>
+              </div>
+            ) : null}
+          </div>
+        )}
         {lot.buy.arrivesOn ? (
           <p className="quiet">{lot.buy.arrivesOn > todayISO() ? 'Arrives' : 'Arrived'} {prettyDate(lot.buy.arrivesOn)}</p>
         ) : null}

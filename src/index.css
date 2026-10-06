@@ -323,6 +323,24 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 }
 .row-title, .quote-price strong { display: block; font-weight: 560; }
 .row-sub, .quote-price span { display: block; color: var(--muted); font-size: 0.84rem; margin-top: 3px; }
+.cost-pair { display: grid; gap: 10px; margin-top: 12px; }
+.cost-pair > div { min-width: 0; }
+@media (min-width: 720px) {
+  .cost-pair { grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); column-gap: 28px; align-items: start; }
+}
+.cost-pair span {
+  display: block;
+  color: var(--faint);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cost-pair strong { display: block; margin-top: 2px; color: var(--text); font-size: 1.15rem; font-weight: 560; }
+.cost-pair small { display: block; margin-top: 2px; color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+.cost-pair .is-average span,
+.cost-pair .is-average strong { color: var(--gold); }
+.cost-pair .is-average strong { font-family: var(--serif); font-weight: 520; font-size: 1.28rem; }
 .quote-price { text-align: right; }
 .quote-price .up { color: var(--green); }
 .quote-price .down { color: var(--red); }
