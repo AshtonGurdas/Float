@@ -82,7 +82,7 @@ export function ReleasesPage() {
         </div>
       </header>
       <p className="quiet">
-        Ship dates come from TCGplayer when the product is in their catalog, and from Universal Distribution’s preorder list when it is not. A date can move before the product lands, and anything from the last few weeks stays here marked Out.
+        Ship dates come from TCGplayer when the product is in their catalog, and from Universal Distribution’s preorder list when it is not. Something new shows up here once either list has it, including a product added to an older set. A date can move before the product lands, and anything from the last few weeks stays here marked Out.
       </p>
       <div className="chips" role="group" aria-label="Game">
         {GAMES.map((item) => (

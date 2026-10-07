@@ -1,12 +1,13 @@
 import { findPicture } from '../shared/art.js'
-import { RELEASE_GAMES, RECENT_DAYS, calendarDate, collapseVariants, distributorRows, mergeReleases, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
+import { RELEASE_GAMES, RECENT_DAYS, collapseVariants, distributorRows, mergeReleases, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
 import { loadArt } from './art.js'
-import { tcg } from './tcg.js'
+import { sleep, tcg } from './tcg.js'
 
 const DISTRIBUTOR = 'https://ca.universaldist.com/api/v1/en/preorderproducts?limit=2000'
-
-const CACHE_MS = 6 * 60 * 60 * 1000
+const STAMP_URL = 'https://tcgcsv.com/last-updated.txt'
+const TCG_CACHE_MS = 26 * 60 * 60 * 1000
 let cache = null
+let pendingTcg = null
 
 function vancouverToday() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -33,17 +34,46 @@ async function mapLimit(items, limit, worker) {
   return results
 }
 
+async function catalogStamp() {
+  const response = await fetch(STAMP_URL, {
+    headers: {
+      Accept: 'text/plain',
+      'User-Agent': 'Float/1.0 (personal TCG shop books; https://github.com/AshtonGurdas/Float)',
+    },
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!response.ok) throw new Error(`TCGCSV stamp ${response.status}`)
+  return (await response.text()).trim()
+}
+
+// New sealed product is often added to an older set, so the set date alone is not enough.
 async function gameRows(game, today, earliest) {
   const payload = await tcg(`/${game.categoryId}/groups`)
-  const groups = (payload.results || []).filter((group) => {
-    const date = calendarDate(group.publishedOn)
-    return date && date >= earliest
-  })
+  const groups = payload.results || []
+  if (!groups.length) return { rows: [], failed: 1 }
+  let failed = 0
   const lists = await mapLimit(groups, 4, async (group) => {
-    const body = await tcg(`/${game.categoryId}/${group.groupId}/products`)
-    return rowsForGroup(game, group, body.results || [], today, earliest)
+    await sleep(80)
+    try {
+      const body = await tcg(`/${game.categoryId}/${group.groupId}/products`)
+      return rowsForGroup(game, group, body.results || [], today, earliest)
+    } catch {
+      failed += 1
+      return []
+    }
   })
-  return lists.flat()
+  return { rows: lists.flat(), failed }
+}
+
+async function loadTcg(today, earliest) {
+  const rows = []
+  let failed = 0
+  for (const game of RELEASE_GAMES) {
+    const result = await gameRows(game, today, earliest)
+    failed += result.failed
+    rows.push(...result.rows)
+  }
+  return { rows, failed }
 }
 
 async function distributorFeed() {
@@ -60,21 +90,43 @@ async function distributorFeed() {
 }
 
 export async function listReleases() {
-  if (cache && Date.now() - cache.at < CACHE_MS && cache.products.length) {
-    return { source: 'tcgplayer', updatedOn: cache.updatedOn, products: cache.products }
-  }
   const today = vancouverToday()
   const earliest = shiftDate(today, -RECENT_DAYS)
-  const [lists, art, distributor] = await Promise.all([
-    Promise.all(RELEASE_GAMES.map((game) => gameRows(game, today, earliest))),
+  const stamp = await catalogStamp().catch(() => null)
+  const tcgFresh = Boolean(
+    cache?.tcgRows &&
+    ((stamp && cache.stamp === stamp) || (!stamp && Date.now() - cache.tcgAt < TCG_CACHE_MS)),
+  )
+  if (!tcgFresh && !pendingTcg) {
+    pendingTcg = loadTcg(today, earliest).finally(() => {
+      pendingTcg = null
+    })
+  }
+  const [tcg, art, distributor] = await Promise.all([
+    tcgFresh
+      ? Promise.resolve({ rows: cache.tcgRows, failed: 0 })
+      : pendingTcg.catch((error) => {
+          if (cache?.tcgRows) return { rows: cache.tcgRows, failed: 0, stale: true }
+          throw error
+        }),
     loadArt().catch(() => null),
     distributorFeed().then((rows) => ({ ok: true, rows })).catch(() => ({ ok: false, rows: [] })),
   ])
-  const products = collapseVariants(sortReleases(mergeReleases(lists.flat(), distributorRows(distributor.rows, today, earliest)))).map((row) => {
+  const udRows = distributor.ok ? distributor.rows : (cache?.udRows || [])
+  const products = collapseVariants(sortReleases(mergeReleases(tcg.rows, distributorRows(udRows, today, earliest)))).map((row) => {
     if (row.imageUrl) return row
     const imageUrl = findPicture(art, row)
     return imageUrl ? { ...row, imageUrl } : row
   })
-  if (products.length && distributor.ok) cache = { at: Date.now(), updatedOn: today, products }
+  if (!tcg.stale && tcg.failed <= 2 && products.length) {
+    cache = {
+      stamp: stamp || cache?.stamp || null,
+      tcgAt: Date.now(),
+      tcgRows: tcg.rows,
+      udRows: distributor.ok ? distributor.rows : (cache?.udRows || []),
+    }
+  } else if (distributor.ok && cache) {
+    cache = { ...cache, udRows: distributor.rows }
+  }
   return { source: 'tcgplayer', updatedOn: today, products }
 }

@@ -60,6 +60,78 @@ test('a product ship date wins over the set date', () => {
   ])
 })
 
+test('a sealed product on an older set shows up when its own ship date is ahead', () => {
+  const group = { name: 'Miscellaneous Cards & Products', publishedOn: '2020-01-01T00:00:00', isSupplemental: true }
+  const rows = rowsForGroup(pokemon, group, [
+    {
+      productId: 1,
+      name: 'League Battle Deck [Mega Greninja ex]',
+      presaleInfo: { releasedOn: '2026-11-13T00:00:00' },
+      extendedData: [],
+    },
+    {
+      productId: 2,
+      name: 'Nickit',
+      presaleInfo: { releasedOn: '2026-11-13T00:00:00' },
+      extendedData: [{ name: 'Number', value: '001' }, { name: 'Rarity', value: 'Common' }],
+    },
+    {
+      productId: 3,
+      name: 'Old Tin',
+      presaleInfo: { releasedOn: '2024-01-01T00:00:00' },
+      extendedData: [],
+    },
+  ], '2026-10-07', '2026-08-23')
+  assert.deepEqual(rows.map((row) => [row.name, row.releasedOn, row.note]), [
+    ['League Battle Deck [Mega Greninja ex]', '2026-11-13', null],
+  ])
+})
+
+test('a product added to an older set shows up before it has a ship date', () => {
+  const group = { name: 'SWSH09: Brilliant Stars', abbreviation: 'SWSH09', publishedOn: '2022-02-25T00:00:00', isSupplemental: false }
+  const older = Array.from({ length: 10 }, (_, index) => ({
+    productId: 1000 + index,
+    name: `Card ${index}`,
+    modifiedOn: '2024-01-01T00:00:00',
+    presaleInfo: {},
+    extendedData: [{ name: 'Number', value: String(index) }, { name: 'Rarity', value: 'Common' }],
+  }))
+  const rows = rowsForGroup(pokemon, group, [
+    ...older,
+    {
+      productId: 1002,
+      name: 'Brilliant Stars Elite Trainer Box',
+      modifiedOn: '2026-10-02T16:14:48.877',
+      presaleInfo: {},
+      extendedData: [],
+    },
+    {
+      productId: 9000,
+      name: 'Brilliant Stars Premium Checklane Blister [Raichu]',
+      modifiedOn: '2026-10-02T16:14:48.877',
+      imageUrl: 'https://example.test/blister.jpg',
+      imageCount: 1,
+      url: 'https://example.test/blister',
+      presaleInfo: { releasedOn: null },
+      extendedData: [],
+    },
+  ], '2026-10-07', '2026-08-23')
+  assert.deepEqual(rows.map((row) => [row.name, row.releasedOn, row.note, row.imageUrl]), [
+    ['Brilliant Stars Premium Checklane Blister [Raichu]', '2026-10-02', 'Newly listed. No ship date yet.', 'https://example.test/blister.jpg'],
+  ])
+})
+
+test('an older set with nothing new does not leave a placeholder', () => {
+  const rows = rowsForGroup(
+    pokemon,
+    { name: 'Jungle', publishedOn: '1999-06-16T00:00:00', isSupplemental: false },
+    [],
+    '2026-10-07',
+    '2026-08-23',
+  )
+  assert.equal(rows.length, 0)
+})
+
 test('a set with no listed products says so, and promo dumps stay off the list', () => {
   const missing = rowsForGroup(
     pokemon,

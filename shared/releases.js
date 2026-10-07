@@ -89,14 +89,48 @@ function rowFrom(game, group, product, setDate, earliest, today, note) {
   }
 }
 
+function isoDay(value) {
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/)
+  return match ? match[1] : null
+}
+
+// A product added to an older set gets a higher id than the rows that have sat unchanged.
+function newlyListedIds(products, earliest) {
+  const established = []
+  for (const product of products || []) {
+    const modified = isoDay(product?.modifiedOn)
+    if (modified && modified < earliest && Number.isInteger(product?.productId)) established.push(product.productId)
+  }
+  if (established.length < 8) return new Set()
+  established.sort((left, right) => left - right)
+  const cutoff = established[Math.min(established.length - 1, Math.floor(established.length * 0.9))]
+  const fresh = new Set()
+  for (const product of products || []) {
+    const modified = isoDay(product?.modifiedOn)
+    if (!modified || modified < earliest || !Number.isInteger(product?.productId) || product.productId <= cutoff) continue
+    if (calendarDate(product?.presaleInfo?.releasedOn)) continue
+    fresh.add(product.productId)
+  }
+  return fresh
+}
+
 export function rowsForGroup(game, group, products, today, earliest) {
   const setDate = calendarDate(group?.publishedOn)
-  if (!setDate || setDate < earliest) return []
   const kept = (products || []).filter((product) => isSealed(product) && keepProduct(product?.name))
-  const rows = kept
-    .map((product) => rowFrom(game, group, product, setDate, earliest, today, null))
-    .filter(Boolean)
+  const fresh = newlyListedIds(products, earliest)
+  const rows = []
+  for (const product of kept) {
+    const dated = rowFrom(game, group, product, setDate, earliest, today, null)
+    if (dated) {
+      rows.push(dated)
+      continue
+    }
+    if (!fresh.has(product.productId)) continue
+    const listed = rowFrom(game, group, product, isoDay(product.modifiedOn), earliest, today, 'Newly listed. No ship date yet.')
+    if (listed) rows.push(listed)
+  }
   if (kept.length) return rows
+  if (!setDate || setDate < earliest) return []
   if (group.isSupplemental || /release event|promo/i.test(group.name || '')) return []
   const placeholder = rowFrom(game, group, null, setDate, earliest, today, 'Individual products are not listed yet.')
   return placeholder ? [placeholder] : []
@@ -152,11 +186,6 @@ const SET_WORD = new Set([
   'english', 'chinese', 'edition', 'card', 'game', 'tcg', 'box', 'case', 'deck', 'set',
   'the', 'and', 'vol', 'pack', 'packs', 'event', 'kit', 'anniversary',
 ])
-
-function isoDay(value) {
-  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/)
-  return match ? match[1] : null
-}
 
 function dayNumber(iso) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '')
