@@ -8,6 +8,7 @@ const groups = [
   { name: 'ME: 30th Celebration', group_id: 3, category_id: 3, game_key: 'pokemon' },
   { name: 'ME: 30th Celebration Classic Collection', group_id: 4, category_id: 3, game_key: 'pokemon' },
   { name: 'Radiance', group_id: 5, category_id: 89, game_key: 'riftbound' },
+  { name: 'Gift of the Rift Bundle', group_id: 9, category_id: 89, game_key: 'riftbound' },
 ]
 
 const delta = [
@@ -44,6 +45,7 @@ test('stock titles land on the sealed product they name', () => {
     ['Pokemon TCG: Mega Evolution-Delta Reign Booster Bundle', delta, 'Delta Reign Booster Bundle'],
     ['Pokemon TCG: Mega Evolution-Delta Reign Pokemon Center Elite Trainer Box', delta, 'Delta Reign Pokemon Center Elite Trainer Box (Exclusive)'],
     ['Pokemon 30th celebration (Day) Ultra-Premium Collection', celebration, '30th Celebration Ultra-Premium Collection [Day]'],
+    ['Riftbound: League of Legends TCG Gift of the Rift Bundle', [{ name: 'Gift of the Rift Bundle', sealed: true }], 'Gift of the Rift Bundle'],
   ]
   for (const [title, products, expected] of checks) {
     const group = matchGroup(groups, title)
@@ -52,4 +54,10 @@ test('stock titles land on the sealed product they name', () => {
   }
   assert.equal(matchGroup(groups, 'Pokemon TCG: Mega Evolution-Delta Reign Booster Bundle').name, 'ME06: Delta Reign')
   assert.equal(matchGroup(groups, 'Pokemon 30th celebration (Day) Ultra-Premium Collection').name, 'ME: 30th Celebration')
+  assert.equal(sealedKind('Riftbound: League of Legends TCG Gift of the Rift Bundle'), 'bundle')
+  assert.equal(sealedKind('Radiance - Vault Bundle'), 'vault')
+  assert.equal(sealedKind('Legacy - Pre-Rift Event Kit'), 'kit')
+  assert.equal(sealedKind('Radiance - Showdown Decks: Evelynn vs Seraphine'), 'deck')
+  assert.equal(sealedKind('Deck Box'), '')
+  assert.equal(pickSealed(radiance, 'Daring Poro (Overnumbered) - Unleashed (UNL)'), null)
 })

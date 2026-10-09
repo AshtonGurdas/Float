@@ -1,5 +1,5 @@
 import { findPicture, shownImage } from '../shared/art.js'
-import { matchGroup, pickSealed, sealedKind } from '../shared/pictures.js'
+import { groupPhrase, matchGroup, pickSealed, sealedKind } from '../shared/pictures.js'
 import { gameByKey } from '../shared/games.js'
 import { saleGap } from '../shared/sales.js'
 import { artForRows, loadArt } from './art.js'
@@ -473,9 +473,11 @@ export async function picturesFor(client, body) {
 
   const sealedHits = []
   for (const item of items) {
-    if (!sealedKind(item.title)) continue
     const group = matchGroup(groups, item.title)
-    if (group) sealedHits.push({ item, group })
+    if (!group) continue
+    const phrase = groupPhrase(group.name)
+    if (!sealedKind(item.title) && phrase.split(' ').filter(Boolean).length < 2) continue
+    sealedHits.push({ item, group })
   }
   const groupIds = [...new Set(sealedHits.map((hit) => hit.group.group_id))]
   let sealedRows = []
