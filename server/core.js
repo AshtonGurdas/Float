@@ -119,11 +119,12 @@ export async function handleApi(request) {
       return json(200, await productDetail(client, url.searchParams))
     }
     if (path === '/api/quotes' && method === 'POST') {
-      return json(200, await quotesFor(client, await readJson(request)))
-    }
-    if (path === '/api/stock-prices' && method === 'POST') {
-      if (limited(user.id, 'stock-prices', 20, 60_000)) return json(429, { error: 'Wait a minute before checking more prices.' })
-      return json(200, await stockMarkets(client, await readJson(request)))
+      const body = await readJson(request)
+      if (body.lookup === 'stock') {
+        if (limited(user.id, 'stock-prices', 20, 60_000)) return json(429, { error: 'Wait a minute before checking more prices.' })
+        return json(200, await stockMarkets(client, body))
+      }
+      return json(200, await quotesFor(client, body))
     }
     if (path === '/api/prices/refresh' && (method === 'GET' || method === 'POST')) {
       if (!cron && limited(user.id, 'refresh', 6, 60_000)) {

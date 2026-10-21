@@ -116,9 +116,9 @@ export function productDetail(id: number, subtype: string | null) {
 }
 
 export function stockMarkets(items: { id: string; title: string; detail: string }[]) {
-  return call<{ items: { id: string; productId: number; name: string; market: number | null }[] }>('/api/stock-prices', {
+  return call<{ items: { id: string; productId: number; name: string; market: number | null }[] }>('/api/quotes', {
     method: 'POST',
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ lookup: 'stock', items }),
   })
 }
 
