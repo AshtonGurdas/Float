@@ -9,6 +9,16 @@ export function IconBooks({ className = 'icon' }: IconProps) {
   )
 }
 
+export function IconProfit({ className = 'icon' }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4.5h10A1.5 1.5 0 0 1 18.5 6v12a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 18V6A1.5 1.5 0 0 1 7 4.5Z" />
+      <path d="M8 8.5h8" />
+      <path d="M8.5 12.5h2M13.5 12.5h2M8.5 16h2M13.5 16h2" />
+    </svg>
+  )
+}
+
 export function IconMarket({ className = 'icon' }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true">

@@ -95,7 +95,7 @@ h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); letter-spacing: 
   display: grid;
   justify-items: center;
   gap: 2px;
-  flex: 1 0 72px;
+  flex: 1 0 76px;
   min-height: 56px;
   padding: 8px 4px 6px;
   border: 0;
@@ -109,6 +109,7 @@ h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); letter-spacing: 
 .release-day { margin: 22px 0 2px; }
 .release-day span { margin-left: 8px; }
 .tabbar .is-active { color: var(--text); }
+.tabbar a.tab-wide { white-space: normal; line-height: 1.15; text-align: center; }
 svg.icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 @media (min-width: 861px) {
@@ -146,6 +147,7 @@ svg.icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-w
   font-weight: 560;
 }
 .side-nav a.is-active { background: var(--bg-raise); color: var(--text); }
+.side-nav a span { min-width: 0; line-height: 1.25; }
 .side-foot { margin-top: auto; display: grid; gap: 8px; }
 .page-head, .sheet-head, .product-id, .quote, .lot, .attached, .action-row, .confirm-row {
   display: flex;
@@ -242,26 +244,12 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 .hero {
   padding: 8px 0 18px;
 }
-.ballpark {
-  margin: 6px 0 8px;
-  padding: 16px 0 4px;
-  border-top: 1px solid var(--line);
-}
-.ballpark h2 { margin-top: 2px; }
-.ballpark-num {
-  font-family: var(--serif);
-  font-weight: 500;
-  font-size: 2rem;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  color: var(--gold);
-  margin: 8px 0 12px;
-}
-.ballpark-num.down { color: var(--red); }
+.hero-num.gold { color: var(--gold); }
+.estimate-group { margin-top: 22px; }
 .estimate-row {
   display: grid;
-  gap: 8px;
-  padding: 12px 0;
+  gap: 10px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--line);
 }
 .estimate-price {

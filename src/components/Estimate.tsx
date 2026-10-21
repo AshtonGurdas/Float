@@ -74,9 +74,13 @@ export function Estimate() {
 
   if (!open.length) {
     return (
-      <section className="ballpark" aria-label="Ballpark">
-        <p className="kicker">Ballpark</p>
-        <h2>If you sold what's left</h2>
+      <section aria-label="Profit calculator">
+        <header className="page-head">
+          <div>
+            <p className="kicker">Guess</p>
+            <h1>Profit calculator</h1>
+          </div>
+        </header>
         <p className="quiet">Nothing is left on hand. A guess shows up here when a purchase still has some quantity.</p>
       </section>
     )
@@ -85,29 +89,35 @@ export function Estimate() {
   const headline = estimate.priced ? signedMoney(estimate.profit) : '—'
 
   return (
-    <section className="ballpark" aria-label="Ballpark">
-      <p className="kicker">Ballpark</p>
-      <h2>If you sold what's left</h2>
-      <p className={`ballpark-num num ${estimate.priced && estimate.profit < 0 ? 'down' : ''}`}>{headline}</p>
-      <div className="split">
+    <section aria-label="Profit calculator">
+      <header className="page-head">
         <div>
-          <span>Might come in</span>
-          <strong className="num">{estimate.priced ? money(estimate.proceeds) : '—'}</strong>
+          <p className="kicker">Guess</p>
+          <h1>Profit calculator</h1>
         </div>
-        <div>
-          <span>Still in them</span>
-          <strong className="num">{estimate.priced ? money(estimate.cost) : '—'}</strong>
+      </header>
+      <div className="hero">
+        <p className="hero-label">If you sold what's left</p>
+        <p className={`hero-num num ${estimate.priced && estimate.profit < 0 ? 'down' : 'gold'}`}>{headline}</p>
+        <div className="split">
+          <div>
+            <span>Might come in</span>
+            <strong className="num">{estimate.priced ? money(estimate.proceeds) : '—'}</strong>
+          </div>
+          <div>
+            <span>Still in them</span>
+            <strong className="num">{estimate.priced ? money(estimate.cost) : '—'}</strong>
+          </div>
         </div>
+        <p className="quiet">
+          A guess for the stock still on hand. Books keeps its own Profit, and that only counts a sale you already logged.
+          A blank price uses the daily TCGplayer market, in US dollars.
+          Type what you might get, such as a price from eBay.ca, and that number is used instead.
+          {estimate.missing > 0 ? ` ${estimate.missing} still ${estimate.missing === 1 ? 'needs' : 'need'} a price, so ${estimate.missing === 1 ? 'it is' : 'they are'} left out.` : ''}
+        </p>
       </div>
-      <p className="quiet">
-        A guess, not the profit above. Profit only counts a sale you already logged.
-        A blank price uses the daily TCGplayer market, in US dollars.
-        Type what you might get, such as a price from eBay.ca, and that number is used instead.
-        This is everything still on hand, not just this month.
-        {estimate.missing > 0 ? ` ${estimate.missing} still ${estimate.missing === 1 ? 'needs' : 'need'} a price, so ${estimate.missing === 1 ? 'it is' : 'they are'} left out.` : ''}
-      </p>
       {groups.map((group) => (
-        <div key={group.key}>
+        <div key={group.key} className="estimate-group">
           <p className="day-label">{group.label}</p>
           <p className="quiet">
             {group.lots.length === group.missing
