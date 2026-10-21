@@ -115,6 +115,13 @@ export function productDetail(id: number, subtype: string | null) {
   }>(`/api/product?${query}`)
 }
 
+export function stockMarkets(items: { id: string; title: string; detail: string }[]) {
+  return call<{ items: { id: string; productId: number; name: string; market: number | null }[] }>('/api/stock-prices', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  })
+}
+
 export function quotesFor(items: { productId: number; subtype: string }[]) {
   return call<{ items: Quote[] }>('/api/quotes', {
     method: 'POST',

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Quote } from '../lib/api.ts'
-import { openEstimate, positions, roundMoney, type Entry, type Lot } from '../lib/books.ts'
-import { money, monthLabel, parseMoney, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
+import { stockMarkets } from '../lib/api.ts'
+import { costGroupKey, openEstimate, positions, type Lot } from '../lib/books.ts'
+import { money, prettyDate, signedMoney, todayISO } from '../lib/format.ts'
 import { lotMarket, quoteKey } from '../lib/market.ts'
-import { entryFields } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
+
+type Found = { name: string; market: number | null }
 
 function marketEach(lot: Lot, quotes: Record<string, Quote>) {
   if (!lot.buy.productId) return null
@@ -13,64 +15,116 @@ function marketEach(lot: Lot, quotes: Record<string, Quote>) {
   return lotMarket(lot.buy.itemKind, lot.buy.boxesPerCase, quote.name, quote.market)
 }
 
-function chosenEach(lot: Lot, quotes: Record<string, Quote>) {
-  if (lot.buy.expectEach != null && !Number.isNaN(lot.buy.expectEach)) {
-    return { each: lot.buy.expectEach, source: 'yours' as const }
+function priceEach(lot: Lot, quotes: Record<string, Quote>, found: Record<string, Found>) {
+  const linked = marketEach(lot, quotes)
+  if (linked != null) return linked
+  const match = found[lot.buy.id]
+  if (!match || match.market == null) return null
+  return lotMarket(lot.buy.itemKind, lot.buy.boxesPerCase, match.name, match.market)
+}
+
+function whenFor(day: string | null, today: string) {
+  if (!day) {
+    return {
+      key: 'undated',
+      sort: '2',
+      title: 'No date yet',
+      detail: 'No arrival day is set, so there is no date for this money yet.',
+    }
   }
-  const market = marketEach(lot, quotes)
-  if (market != null) return { each: market, source: 'market' as const }
-  return { each: null, source: 'none' as const }
-}
-
-function whenOf(entry: Entry, today: string) {
-  const day = entry.arrivesOn
-  if (!day) return { key: 'undated', sort: '2', label: 'No arrival day' }
-  if (day <= today) return { key: 'hand', sort: '0', label: 'In hand' }
-  const year = Number(day.slice(0, 4))
-  const month = Number(day.slice(5, 7))
-  return { key: day.slice(0, 7), sort: `1-${day.slice(0, 7)}`, label: monthLabel(year, month) }
-}
-
-function arrivalBit(entry: Entry, today: string) {
-  if (!entry.arrivesOn) return null
-  const verb = entry.arrivesOn <= today ? 'Arrived' : 'Arrives'
-  return `${verb} ${prettyDate(entry.arrivesOn)}`
-}
-
-function centsSum(values: number[]) {
-  return values.reduce((sum, value) => sum + Math.round(value * 100), 0) / 100
+  if (day <= today) {
+    return {
+      key: 'hand',
+      sort: '0',
+      title: 'Already in hand',
+      detail: 'You already have it. The money comes when you sell it.',
+    }
+  }
+  return {
+    key: day,
+    sort: `1-${day}`,
+    title: `Around ${prettyDate(day)}, ${day.slice(0, 4)}`,
+    detail: 'That is when it arrives, so the money comes after you sell it.',
+  }
 }
 
 export function Estimate() {
-  const { entries, quotes, saveEntry, setError } = useShop()
+  const { entries, quotes, setError } = useShop()
   const today = todayISO()
   const open = useMemo(() => positions(entries).filter((lot) => lot.remaining > 0), [entries])
-  const estimate = useMemo(
-    () => openEstimate(open, (lot) => chosenEach(lot, quotes).each),
-    [open, quotes],
-  )
-  const byId = useMemo(() => new Map(estimate.lines.map((line) => [line.id, line])), [estimate.lines])
-  const groups = useMemo(() => {
-    const buckets = new Map<string, { key: string; sort: string; label: string; lots: Lot[] }>()
+  const choices = useMemo(() => {
+    const buckets = new Map<string, Lot[]>()
     for (const lot of open) {
-      const when = whenOf(lot.buy, today)
-      const bucket = buckets.get(when.key) || { ...when, lots: [] }
+      const key = costGroupKey(lot.buy.title)
+      const list = buckets.get(key) || []
+      list.push(lot)
+      buckets.set(key, list)
+    }
+    return [...buckets.entries()]
+      .map(([key, lots]) => {
+        const titles = [...new Set(lots.map((lot) => lot.buy.title))].sort((a, b) => a.length - b.length || a.localeCompare(b))
+        return { key, lots, label: titles[0] || 'Stock' }
+      })
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [open])
+  const [pick, setPick] = useState<string | null>(null)
+  const [found, setFound] = useState<Record<string, Found>>({})
+  const [checking, setChecking] = useState(false)
+  const needKey = open.map((lot) => `${lot.buy.id}:${lot.buy.title}:${lot.buy.detail}`).join('|')
+
+  useEffect(() => {
+    const items = open
+      .filter((lot) => marketEach(lot, quotes) == null)
+      .map((lot) => ({ id: lot.buy.id, title: lot.buy.title, detail: lot.buy.detail }))
+    if (!items.length) {
+      setChecking(false)
+      return
+    }
+    let live = true
+    setChecking(true)
+    stockMarkets(items)
+      .then((data) => {
+        if (!live) return
+        const next: Record<string, Found> = {}
+        for (const item of data.items) next[item.id] = { name: item.name, market: item.market }
+        setFound(next)
+      })
+      .catch((err: unknown) => {
+        if (!live) return
+        setError(err instanceof Error ? err.message : 'TCGplayer did not answer.')
+      })
+      .finally(() => {
+        if (live) setChecking(false)
+      })
+    return () => {
+      live = false
+    }
+  }, [needKey, open, quotes, setError])
+
+  const picked = useMemo(() => {
+    if (!pick) return []
+    if (pick === 'all') return open
+    return choices.find((choice) => choice.key === pick)?.lots || []
+  }, [pick, open, choices])
+  const estimate = useMemo(
+    () => openEstimate(picked, (lot) => priceEach(lot, quotes, found)),
+    [picked, quotes, found],
+  )
+  const windows = useMemo(() => {
+    const buckets = new Map<string, { key: string; sort: string; title: string; detail: string; lots: Lot[] }>()
+    for (const lot of picked) {
+      const when = whenFor(lot.buy.arrivesOn, today)
+      const bucket = buckets.get(when.key) || { ...when, lots: [] as Lot[] }
       bucket.lots.push(lot)
       buckets.set(when.key, bucket)
     }
     return [...buckets.values()]
       .sort((a, b) => a.sort.localeCompare(b.sort))
-      .map((bucket) => {
-        const lines = bucket.lots.map((lot) => byId.get(lot.buy.id)).filter((line) => line != null)
-        const priced = lines.filter((line) => line.proceeds != null)
-        return {
-          ...bucket,
-          proceeds: centsSum(priced.map((line) => line.proceeds || 0)),
-          profit: centsSum(priced.map((line) => line.profit || 0)),
-          missing: lines.length - priced.length,
-        }
-      })
-  }, [open, today, byId])
+      .map((bucket) => ({
+        ...bucket,
+        estimate: openEstimate(bucket.lots, (lot) => priceEach(lot, quotes, found)),
+      }))
+  }, [picked, today, quotes, found])
 
   if (!open.length) {
     return (
@@ -86,7 +140,8 @@ export function Estimate() {
     )
   }
 
-  const headline = estimate.priced ? signedMoney(estimate.profit) : '—'
+  const headline = estimate.priced ? signedMoney(estimate.profit) : checking ? '…' : '—'
+  const several = windows.length > 1
 
   return (
     <section aria-label="Profit calculator">
@@ -96,129 +151,52 @@ export function Estimate() {
           <h1>Profit calculator</h1>
         </div>
       </header>
-      <div className="hero">
-        <p className="hero-label">If you sold what's left</p>
-        <p className={`hero-num num ${estimate.priced && estimate.profit < 0 ? 'down' : 'gold'}`}>{headline}</p>
-        <div className="split">
-          <div>
-            <span>Might come in</span>
-            <strong className="num">{estimate.priced ? money(estimate.proceeds) : '—'}</strong>
-          </div>
-          <div>
-            <span>Still in them</span>
-            <strong className="num">{estimate.priced ? money(estimate.cost) : '—'}</strong>
-          </div>
-        </div>
-        <p className="quiet">
-          A guess for the stock still on hand. Books keeps its own Profit, and that only counts a sale you already logged.
-          A blank price uses the daily TCGplayer market, in US dollars.
-          Type what you might get, such as a price from eBay.ca, and that number is used instead.
-          {estimate.missing > 0 ? ` ${estimate.missing} still ${estimate.missing === 1 ? 'needs' : 'need'} a price, so ${estimate.missing === 1 ? 'it is' : 'they are'} left out.` : ''}
-        </p>
+      <p className="quiet">Pick a stock. The price is the TCGplayer market, and the date is when that stock arrives.</p>
+      <div className="pick-list" role="group" aria-label="Which stock">
+        <button type="button" className="chip" aria-pressed={pick === 'all'} onClick={() => setPick('all')}>All of it</button>
+        {choices.map((choice) => (
+          <button key={choice.key} type="button" className="chip" aria-pressed={pick === choice.key} onClick={() => setPick(choice.key)}>
+            {choice.label}
+          </button>
+        ))}
       </div>
-      {groups.map((group) => (
-        <div key={group.key} className="estimate-group">
-          <p className="day-label">{group.label}</p>
-          <p className="quiet">
-            {group.lots.length === group.missing
-              ? 'Every line here still needs a price.'
-              : `About ${money(group.proceeds)} in · ${signedMoney(group.profit)} after cost${group.missing ? ` · ${group.missing} still ${group.missing === 1 ? 'needs' : 'need'} a price` : ''}.`}
-            {group.key === 'hand' ? ' Already due, so this is the part you could sell now.' : ''}
-            {group.key === 'undated' ? ' No arrival day, so these are not on the calendar.' : ''}
-          </p>
-          {group.lots
-            .slice()
-            .sort((a, b) => (a.buy.arrivesOn || '').localeCompare(b.buy.arrivesOn || '') || a.buy.title.localeCompare(b.buy.title))
-            .map((lot) => (
-              <EstimateRow key={lot.buy.id} lot={lot} quotes={quotes} today={today} saveEntry={saveEntry} setError={setError} />
-            ))}
+      {pick && picked.length ? (
+        <div aria-live="polite">
+          <div className="hero">
+            <p className="hero-label">You'd make</p>
+            <p className={`hero-num num ${estimate.priced && estimate.profit < 0 ? 'down' : 'gold'}`}>{headline}</p>
+            {estimate.priced ? (
+              <>
+                <div className="split">
+                  <div>
+                    <span>Would come in</span>
+                    <strong className="num">{money(estimate.proceeds)}</strong>
+                  </div>
+                  <div>
+                    <span>Still in the stock</span>
+                    <strong className="num">{money(estimate.cost)}</strong>
+                  </div>
+                </div>
+                <p className="quiet">TCGplayer prices are daily, in US dollars. Books keeps its own Profit for sales you already logged.</p>
+              </>
+            ) : (
+              <p className="quiet">{checking ? 'Checking TCGplayer…' : 'TCGplayer does not have a market price for this yet.'}</p>
+            )}
+            {estimate.priced && estimate.missing > 0 ? (
+              <p className="quiet">{estimate.missing} {estimate.missing === 1 ? 'does' : 'do'} not have a TCGplayer price, so {estimate.missing === 1 ? 'it is' : 'they are'} left out.</p>
+            ) : null}
+          </div>
+          {windows.map((window) => (
+            <div key={window.key} className="when-block">
+              <p className="day-label">{window.title}</p>
+              <p className="quiet">{window.detail}</p>
+              {several && window.estimate.priced ? (
+                <p className="row-title">{signedMoney(window.estimate.profit)} from this date · about {money(window.estimate.proceeds)} would come in</p>
+              ) : null}
+            </div>
+          ))}
         </div>
-      ))}
+      ) : null}
     </section>
-  )
-}
-
-function EstimateRow({
-  lot,
-  quotes,
-  today,
-  saveEntry,
-  setError,
-}: {
-  lot: Lot
-  quotes: Record<string, Quote>
-  today: string
-  saveEntry: ReturnType<typeof useShop>['saveEntry']
-  setError: (message: string | null) => void
-}) {
-  const choice = chosenEach(lot, quotes)
-  const market = marketEach(lot, quotes)
-  const line = openEstimate([lot], () => choice.each).lines[0]
-  const saved = lot.buy.expectEach
-  const [text, setText] = useState(saved == null ? '' : String(saved))
-  const [focused, setFocused] = useState(false)
-  const [saving, setSaving] = useState(false)
-  useEffect(() => {
-    if (!focused) setText(saved == null ? '' : String(saved))
-  }, [saved, focused])
-
-  async function commit() {
-    const parsed = parseMoney(text)
-    if (Number.isNaN(parsed as number)) {
-      setText(saved == null ? '' : String(saved))
-      return
-    }
-    const next = parsed == null ? null : roundMoney(parsed)
-    if ((next == null && saved == null) || (next != null && saved != null && Math.abs(next - saved) < 0.001)) return
-    setSaving(true)
-    try {
-      await saveEntry({ ...entryFields(lot.buy), expectEach: next }, lot.buy.id)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that price.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const arrived = arrivalBit(lot.buy, today)
-  const bits = [`${lot.remaining} left`, `cost ${money(lot.costLeft)}`]
-  if (arrived) bits.push(arrived)
-  const caption = choice.source === 'yours' && choice.each != null
-    ? `Your price, ${money(choice.each)} each`
-    : choice.source === 'market' && market != null
-      ? `TCGplayer ${money(market)} each, US dollars`
-      : 'No market price yet'
-
-  return (
-    <div className="estimate-row">
-      <div>
-        <p className="row-title">{lot.buy.title}</p>
-        <p className="row-sub">{bits.join(' · ')}</p>
-      </div>
-      <div className="estimate-price">
-        <label>
-          Price each
-          <input
-            aria-label={`Price each for ${lot.buy.title}`}
-            inputMode="decimal"
-            value={text}
-            placeholder={market != null ? String(market) : 'Your price'}
-            onFocus={() => setFocused(true)}
-            onBlur={() => {
-              setFocused(false)
-              void commit()
-            }}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') event.currentTarget.blur()
-            }}
-          />
-        </label>
-        <p className={`estimate-result num ${line?.profit == null ? '' : tone(line.profit)}`}>
-          {line?.profit == null ? 'Need a price' : signedMoney(line.profit)}
-        </p>
-        <p className="row-sub estimate-caption">{saving ? 'Saving…' : caption}</p>
-      </div>
-    </div>
   )
 }

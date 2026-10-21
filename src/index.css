@@ -245,45 +245,17 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
   padding: 8px 0 18px;
 }
 .hero-num.gold { color: var(--gold); }
-.estimate-group { margin-top: 22px; }
-.estimate-row {
-  display: grid;
-  gap: 10px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--line);
-}
-.estimate-price {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 10px;
-  align-items: center;
-}
-.estimate-caption { grid-column: 1 / -1; margin: 0; }
-.estimate-price label {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-.estimate-price input {
-  width: 100%;
-  min-height: 44px;
+.pick-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.pick-list .chip {
+  white-space: normal;
+  text-align: left;
+  max-width: 100%;
+  height: auto;
   padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--bg-sink);
-  font-size: 16px;
+  line-height: 1.25;
 }
-.estimate-result { text-align: right; font-weight: 600; white-space: nowrap; }
-@media (min-width: 720px) {
-  .estimate-row {
-    grid-template-columns: minmax(0, 1.4fr) minmax(12rem, 1fr);
-    gap: 16px;
-    align-items: center;
-  }
-}
+.when-block { margin-top: 18px; }
+.when-block .quiet { margin-top: 4px; }
 .hero-label { color: var(--muted); font-size: 0.9rem; }
 .hero-num {
   font-family: var(--serif);

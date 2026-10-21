@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { registerAccount } from './account.js'
 import { bcEvents } from './events.js'
 import { listReleases } from './releases.js'
-import { ingestOne, latestSealed, listSets, picturesFor, productDetail, quotesFor, refreshPrices, search } from './catalog.js'
+import { ingestOne, latestSealed, listSets, picturesFor, productDetail, quotesFor, refreshPrices, search, stockMarkets } from './catalog.js'
 import { adminClient, userFromRequest } from './supabase.js'
 
 const hits = new Map()
@@ -120,6 +120,10 @@ export async function handleApi(request) {
     }
     if (path === '/api/quotes' && method === 'POST') {
       return json(200, await quotesFor(client, await readJson(request)))
+    }
+    if (path === '/api/stock-prices' && method === 'POST') {
+      if (limited(user.id, 'stock-prices', 20, 60_000)) return json(429, { error: 'Wait a minute before checking more prices.' })
+      return json(200, await stockMarkets(client, await readJson(request)))
     }
     if (path === '/api/prices/refresh' && (method === 'GET' || method === 'POST')) {
       if (!cron && limited(user.id, 'refresh', 6, 60_000)) {
