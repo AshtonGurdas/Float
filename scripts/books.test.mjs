@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, summarize } from '../shared/books.js'
-import { lotMarket } from '../shared/market.js'
+import { lotMarket, toCad } from '../shared/market.js'
 
 function entry(overrides) {
   return {
@@ -183,4 +183,8 @@ test('a ballpark uses the price you give and leaves the cash profit alone', () =
   assert.equal(lotMarket('case', 6, 'Radiance Booster Display', 100), 600)
   assert.equal(lotMarket('case', 6, 'Radiance Booster Case', 540), 540)
   assert.equal(lotMarket('box', null, 'Radiance Booster Display', 100), 100)
+  assert.equal(toCad(139.55, 1.4057), 196.17)
+  assert.equal(toCad(100, 1.4), 140)
+  assert.equal(toCad(null, 1.4), null)
+  assert.equal(toCad(10, 0), null)
 })

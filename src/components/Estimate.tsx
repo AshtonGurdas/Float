@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Quote } from '../lib/api.ts'
 import { stockMarkets } from '../lib/api.ts'
 import { costGroupKey, openEstimate, positions, type Lot } from '../lib/books.ts'
+import { rateLabel, useCadRate } from '../lib/cad.ts'
 import { money, prettyDate, signedMoney, todayISO } from '../lib/format.ts'
-import { lotMarket, quoteKey } from '../lib/market.ts'
+import { lotMarket, quoteKey, toCad } from '../lib/market.ts'
 import { useShop } from '../store.tsx'
 
 type Found = { name: string; market: number | null }
@@ -15,12 +16,13 @@ function marketEach(lot: Lot, quotes: Record<string, Quote>) {
   return lotMarket(lot.buy.itemKind, lot.buy.boxesPerCase, quote.name, quote.market)
 }
 
-function priceEach(lot: Lot, quotes: Record<string, Quote>, found: Record<string, Found>) {
+function priceEach(lot: Lot, quotes: Record<string, Quote>, found: Record<string, Found>, usdCad: number | null) {
+  if (usdCad == null) return null
   const linked = marketEach(lot, quotes)
-  if (linked != null) return linked
+  if (linked != null) return toCad(linked, usdCad)
   const match = found[lot.buy.id]
   if (!match || match.market == null) return null
-  return lotMarket(lot.buy.itemKind, lot.buy.boxesPerCase, match.name, match.market)
+  return toCad(lotMarket(lot.buy.itemKind, lot.buy.boxesPerCase, match.name, match.market), usdCad)
 }
 
 function whenFor(day: string | null, today: string) {
@@ -50,6 +52,8 @@ function whenFor(day: string | null, today: string) {
 
 export function Estimate() {
   const { entries, quotes, setError } = useShop()
+  const cad = useCadRate()
+  const usdCad = cad.state === 'ready' ? cad.rate?.usdCad ?? null : null
   const today = todayISO()
   const open = useMemo(() => positions(entries).filter((lot) => lot.remaining > 0), [entries])
   const choices = useMemo(() => {
@@ -107,8 +111,8 @@ export function Estimate() {
     return choices.find((choice) => choice.key === pick)?.lots || []
   }, [pick, open, choices])
   const estimate = useMemo(
-    () => openEstimate(picked, (lot) => priceEach(lot, quotes, found)),
-    [picked, quotes, found],
+    () => openEstimate(picked, (lot) => priceEach(lot, quotes, found, usdCad)),
+    [picked, quotes, found, usdCad],
   )
   const windows = useMemo(() => {
     const buckets = new Map<string, { key: string; sort: string; title: string; detail: string; lots: Lot[] }>()
@@ -122,9 +126,9 @@ export function Estimate() {
       .sort((a, b) => a.sort.localeCompare(b.sort))
       .map((bucket) => ({
         ...bucket,
-        estimate: openEstimate(bucket.lots, (lot) => priceEach(lot, quotes, found)),
+        estimate: openEstimate(bucket.lots, (lot) => priceEach(lot, quotes, found, usdCad)),
       }))
-  }, [picked, today, quotes, found])
+  }, [picked, today, quotes, found, usdCad])
 
   if (!open.length) {
     return (
@@ -140,7 +144,8 @@ export function Estimate() {
     )
   }
 
-  const headline = estimate.priced ? signedMoney(estimate.profit) : checking ? '…' : '—'
+  const waiting = checking || cad.state === 'loading'
+  const headline = estimate.priced ? signedMoney(estimate.profit) : waiting ? '…' : '—'
   const several = windows.length > 1
 
   return (
@@ -177,10 +182,16 @@ export function Estimate() {
                     <strong className="num">{money(estimate.cost)}</strong>
                   </div>
                 </div>
-                <p className="quiet">TCGplayer prices are daily, in US dollars. Books keeps its own Profit for sales you already logged.</p>
+                <p className="quiet">Your stock cost is in Canadian dollars. TCGplayer’s US price is converted at the Bank of Canada rate, {cad.rate ? rateLabel(cad.rate) : 'today'}. Books keeps its own Profit for sales you already logged.</p>
               </>
             ) : (
-              <p className="quiet">{checking ? 'Checking TCGplayer…' : 'TCGplayer does not have a market price for this yet.'}</p>
+              <p className="quiet">
+                {cad.state === 'error'
+                  ? 'The Canadian exchange rate did not load, so this guess stays hidden.'
+                  : waiting
+                    ? 'Checking TCGplayer…'
+                    : 'TCGplayer does not have a market price for this yet.'}
+              </p>
             )}
             {estimate.priced && estimate.missing > 0 ? (
               <p className="quiet">{estimate.missing} {estimate.missing === 1 ? 'does' : 'do'} not have a TCGplayer price, so {estimate.missing === 1 ? 'it is' : 'they are'} left out.</p>

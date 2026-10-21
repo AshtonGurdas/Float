@@ -115,6 +115,15 @@ export function productDetail(id: number, subtype: string | null) {
   }>(`/api/product?${query}`)
 }
 
+export type CadRate = { usdCad: number; asOf: string }
+
+export function cadRate() {
+  return call<CadRate>('/api/quotes', {
+    method: 'POST',
+    body: JSON.stringify({ lookup: 'fx' }),
+  })
+}
+
 export function stockMarkets(items: { id: string; title: string; detail: string }[]) {
   return call<{ items: { id: string; productId: number; name: string; market: number | null }[] }>('/api/quotes', {
     method: 'POST',

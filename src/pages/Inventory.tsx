@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { Thumb } from '../components/Thumb.tsx'
 import { picturesFor, type Quote } from '../lib/api.ts'
 import { averageCosts, costGroupKey, lineCash, positions, roundMoney, type AverageCost, type Entry, type Lot } from '../lib/books.ts'
+import { rateLabel, useCadRate } from '../lib/cad.ts'
 import { kindLabel, money, monthLabel, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
-import { lotMarket, quoteKey } from '../lib/market.ts'
+import { lotMarket, quoteKey, toCad } from '../lib/market.ts'
 import { CARRIERS, carrierLabel, guessCarrier, trackingUrl } from '../../shared/tracking.js'
 import { entryFields } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
@@ -15,6 +16,8 @@ function heldMarket(lot: Lot, quote: Quote | undefined) {
 
 export function InventoryPage() {
   const { entries, quotes, openDraft, setError } = useShop()
+  const cad = useCadRate()
+  const usdCad = cad.state === 'ready' ? cad.rate?.usdCad ?? null : null
   const [photos, setPhotos] = useState<Record<string, string>>({})
   const [trackingLot, setTrackingLot] = useState<Lot | null>(null)
   const [view, setView] = useState<'list' | 'sold' | 'calendar'>('list')
@@ -51,14 +54,19 @@ export function InventoryPage() {
   let worth = 0
   let basis = 0
   let priced = 0
+  let listed = 0
   for (const lot of open) {
-    const each = heldMarket(lot, quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)])
-    if (each == null || !lot.buy.productId) continue
-    worth += each * lot.remaining
+    const usd = heldMarket(lot, quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)])
+    if (usd == null || !lot.buy.productId) continue
+    listed += 1
+    if (usdCad == null) continue
+    const each = toCad(usd, usdCad)
+    if (each == null) continue
+    worth += roundMoney(each * lot.remaining)
     basis += lot.costLeft
     priced += 1
   }
-  const unrealized = worth - basis
+  const unrealized = roundMoney(worth - basis)
 
   return (
     <section>
@@ -77,17 +85,21 @@ export function InventoryPage() {
           </div>
           <div>
             <span>Market</span>
-            <strong className="num">{priced ? money(worth) : '—'}</strong>
+            <strong className="num">{cad.state === 'loading' && listed ? '…' : priced ? money(worth) : '—'}</strong>
           </div>
           <div>
             <span>Open</span>
-            <strong className={`num ${priced ? tone(unrealized) : 'flat'}`}>{priced ? signedMoney(unrealized) : '—'}</strong>
+            <strong className={`num ${priced ? tone(unrealized) : 'flat'}`}>{cad.state === 'loading' && listed ? '…' : priced ? signedMoney(unrealized) : '—'}</strong>
           </div>
         </div>
         <p className="quiet">
-          {priced
-            ? `Market covers ${priced} of ${open.length} open ${open.length === 1 ? 'lot' : 'lots'} that have a TCGplayer listing.`
-            : 'Attach a TCGplayer listing on a purchase to see what that stock is worth today.'}
+          {listed && cad.state === 'loading'
+            ? 'Converting the TCGplayer price into Canadian dollars.'
+            : listed && cad.state === 'error'
+              ? 'The Canadian exchange rate did not load, so the market guess stays hidden.'
+              : priced
+                ? `Market is the TCGplayer price in Canadian dollars, at the Bank of Canada rate ${cad.rate ? rateLabel(cad.rate) : ''}. It covers ${priced} of ${open.length} open ${open.length === 1 ? 'lot' : 'lots'} with a listing.`
+                : 'Attach a TCGplayer listing on a purchase to see what that stock is worth today.'}
         </p>
       </div>
       <div className="seg" role="group" aria-label="Stock view">
@@ -122,6 +134,8 @@ export function InventoryPage() {
               quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
               photo={photos[lot.buy.id]}
               average={averages.get(costGroupKey(lot.buy.title))}
+              usdCad={usdCad}
+              rateState={cad.state}
               onTrack={() => setTrackingLot(lot)}
             />
           ))}
@@ -141,6 +155,8 @@ export function InventoryPage() {
               lot={lot}
               quote={quotes[quoteKey(lot.buy.productId || 0, lot.buy.subtype)]}
               photo={photos[lot.buy.id]}
+              usdCad={usdCad}
+              rateState={cad.state}
               onTrack={() => setTrackingLot(lot)}
             />
           ))}
@@ -262,10 +278,11 @@ function countText(value: number) {
   return String(Math.round(value * 1000) / 1000)
 }
 
-function LotRow({ lot, quote, photo, average, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; average?: AverageCost; onTrack: () => void }) {
+function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; average?: AverageCost; usdCad: number | null; rateState: 'loading' | 'ready' | 'error'; onTrack: () => void }) {
   const { openDraft } = useShop()
   const each = heldMarket(lot, quote)
-  const openValue = each == null ? null : each * lot.remaining - lot.costLeft
+  const eachCad = each == null || usdCad == null ? null : toCad(each, usdCad)
+  const openValue = eachCad == null ? null : roundMoney(eachCad * lot.remaining - lot.costLeft)
   const soldOut = lot.remaining <= 0
   const proceeds = roundMoney(lot.sales.reduce((sum, sale) => sum + lineCash(sale), 0))
   const profit = roundMoney(proceeds - lot.unitCost * lot.soldQty)
@@ -318,9 +335,11 @@ function LotRow({ lot, quote, photo, average, onTrack }: { lot: Lot; quote: Quot
           <p className={`quiet ${tone(profit)}`}>Took {money(proceeds)} · {signedMoney(profit)}</p>
         ) : each == null ? (
           <p className="quiet">No market price on this line.</p>
+        ) : rateState === 'error' || eachCad == null ? (
+          <p className="quiet">{rateState === 'loading' ? 'Converting the market price into Canadian dollars.' : 'The Canadian rate did not load, so this guess stays hidden.'}</p>
         ) : (
           <p className={`quiet ${tone(openValue || 0)}`}>
-            Market {money(each)} each · open {signedMoney(openValue || 0)}
+            Market {money(eachCad)} each · open {signedMoney(openValue || 0)}
           </p>
         )}
       </div>

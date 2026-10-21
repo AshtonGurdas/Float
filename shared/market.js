@@ -45,3 +45,11 @@ export function lotMarket(kind, boxesPerCase, quoteName, market) {
 export function quoteKey(productId, subtype) {
   return `${productId}:${subtype || ''}`
 }
+
+export function toCad(usd, usdCad) {
+  if (usd == null || usdCad == null || usd === '' || usdCad === '') return null
+  const price = Number(usd)
+  const rate = Number(usdCad)
+  if (!Number.isFinite(price) || !Number.isFinite(rate) || rate <= 0) return null
+  return Math.round(price * rate * 100) / 100
+}
