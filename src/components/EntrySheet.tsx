@@ -123,9 +123,10 @@ export function EntrySheet() {
   entriesRef.current = entries
 
   useEffect(() => {
-    if (!draft) return
+    setSaving(false)
     setError(null)
     setConfirmDelete(false)
+    if (!draft) return
     setHits([])
     setFinder('')
     setFinderLine(null)
@@ -396,7 +397,12 @@ export function EntrySheet() {
     }
     setSaving(true)
     try {
-      await saveOrder(items, removeIds)
+      await Promise.race([
+        saveOrder(items, removeIds),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => reject(new Error('Saving is taking too long. Check your connection and try again.')), 15000)
+        }),
+      ])
       closeDraft()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save that entry.')
@@ -410,14 +416,20 @@ export function EntrySheet() {
     if (!ids.length) return
     for (const id of ids) {
       if (soldOf(id) > 0) {
-        setError('Delete the sales of this purchase first.')
-        setConfirmDelete(false)
+        setError('This purchase still has a sale. Delete that sale first, then you can remove the purchase.')
         return
       }
     }
     setSaving(true)
     try {
-      for (const id of ids) await deleteEntry(id)
+      for (const id of ids) {
+        await Promise.race([
+          deleteEntry(id),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error('Deleting is taking too long. Check your connection and try again.')), 15000)
+          }),
+        ])
+      }
       closeDraft()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not delete that entry.')
@@ -685,7 +697,7 @@ export function EntrySheet() {
           confirmDelete ? (
             <div className="confirm-row">
               <span>{lines.length > 1 ? 'Delete this order?' : 'Delete this entry?'}</span>
-              <button type="button" className="btn danger" onClick={onDelete} disabled={saving}>Delete</button>
+              <button type="button" className="btn danger" onClick={onDelete} disabled={saving}>{saving ? 'Deleting…' : 'Delete'}</button>
               <button type="button" className="btn ghost" onClick={() => setConfirmDelete(false)}>Keep</button>
             </div>
           ) : (

@@ -9,6 +9,9 @@ export const supabase = url && anonKey
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        // The browser lock can leave a save or delete waiting forever when the
+        // same account is open on a phone and a computer.
+        lock: async <R,>(_name: string, _acquireTimeout: number, fn: () => Promise<R>) => fn(),
       },
     })
   : null

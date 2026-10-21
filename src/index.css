@@ -350,6 +350,7 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 .bar-col.is-active .bar { filter: saturate(1.2); }
 .bar-label { text-align: center; font-size: 0.68rem; }
 .ledger { border-top: 1px solid var(--line); }
+.ledger-note { margin: 28px 0 0; }
 .day-label { margin: 18px 0 0; color: var(--faint); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .row, .quote-main {
   width: 100%;

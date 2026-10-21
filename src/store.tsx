@@ -91,11 +91,16 @@ export function ShopProvider({ session, children }: { session: Session; children
   const load = useCallback(async () => {
     if (!supabase) return
     setLoading(true)
-    const [entryRes, watchRes, shopRes, customerRes] = await Promise.all([
-      supabase.from('entries').select('*').order('occurred_on', { ascending: false }).limit(2000),
-      supabase.from('watchlist').select('*').order('created_at', { ascending: false }),
-      supabase.from('shops').select('*').order('name'),
-      supabase.from('customers').select('*').order('name'),
+    const [entryRes, watchRes, shopRes, customerRes] = await Promise.race([
+      Promise.all([
+        supabase.from('entries').select('*').order('occurred_on', { ascending: false }).limit(2000),
+        supabase.from('watchlist').select('*').order('created_at', { ascending: false }),
+        supabase.from('shops').select('*').order('name'),
+        supabase.from('customers').select('*').order('name'),
+      ] as const),
+      new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error('Your books are taking too long to load. Check your connection and refresh.')), 20000)
+      }),
     ])
     if (entryRes.error) throw new Error(entryRes.error.message)
     if (watchRes.error) throw new Error(watchRes.error.message)

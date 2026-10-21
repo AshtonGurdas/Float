@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { NetBars } from '../components/Chart.tsx'
-import { lineCash, monthBounds, monthNets, realized, saleTake, summarize, yearNets } from '../lib/books.ts'
+import { lineCash, monthBounds, monthNets, realized, saleTake, summarize, yearNets, type Entry } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, movementLabel, prettyDate, signedMoney, tone } from '../lib/format.ts'
+import type { Customer, Shop } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
 
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
@@ -16,7 +17,6 @@ export function BooksPage() {
   const bounds = period === 'month' ? monthBounds(year, month) : period === 'year' ? { start: `${year}-01-01`, end: `${year}-12-31` } : null
   const stats = bounds ? summarize(entries, bounds.start, bounds.end) : summarize(entries)
   const profit = bounds ? realized(entries, bounds.start, bounds.end) : realized(entries)
-  const buys = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries])
   const years = useMemo(() => yearNets(entries), [entries])
   const showYears = period === 'all' && years.length > 1
   const bars = showYears ? years.map((item) => item.net) : monthNets(entries, year)
@@ -27,12 +27,9 @@ export function BooksPage() {
     if (!bounds) return true
     return entry.occurredOn >= bounds.start && entry.occurredOn <= bounds.end
   })
-  const grouped = new Map<string, typeof visible>()
-  for (const entry of visible) {
-    const list = grouped.get(entry.occurredOn) || []
-    list.push(entry)
-    grouped.set(entry.occurredOn, list)
-  }
+  const hidden = bounds
+    ? entries.filter((entry) => entry.occurredOn < bounds.start || entry.occurredOn > bounds.end)
+    : []
 
   const atFuture = period === 'month'
     ? year > now.getFullYear() || (year === now.getFullYear() && month >= now.getMonth() + 1)
@@ -107,45 +104,81 @@ export function BooksPage() {
       {loading ? <p className="quiet">Loading your books…</p> : null}
       {!loading && visible.length === 0 ? (
         <div className="empty">
-          <p>Nothing in this range yet.</p>
-          <p>Add a card you bought, or a case of booster boxes.</p>
+          <p>{hidden.length ? `Nothing in ${heading}.` : 'Nothing in this range yet.'}</p>
+          {hidden.length ? (
+            <p>Purchases from other months are listed below. They are not in these totals.</p>
+          ) : (
+            <p>Add a card you bought, or a case of booster boxes.</p>
+          )}
           <button type="button" className="btn" onClick={() => openDraft({ mode: 'create' })}>Add an entry</button>
         </div>
-      ) : (
-        <div className="ledger">
-          {[...grouped.entries()].map(([date, rows]) => (
-            <div key={date}>
-              <p className="day-label">{prettyDate(date)}</p>
-              {rows.map((entry) => {
-                const cash = lineCash(entry)
-                const take = entry.lotId ? saleTake(buys.get(entry.lotId), entry) : null
-                const signed = take ? take.profit : entry.direction === 'out' ? -cash : cash
-                const bits = [movementLabel(entry), kindLabel(entry)]
-                if (entry.detail) bits.push(entry.detail)
-                if (entry.quantity !== 1) bits.push(`${entry.quantity} × ${money(entry.unitAmount)}`)
-                if (take) bits.push(`cost ${money(take.cost)}`)
-                const shopName = shops.find((shop) => shop.id === entry.shopId)?.name
-                if (shopName) bits.push(shopName)
-                const buyer = customers.find((customer) => customer.id === entry.customerId)?.name
-                if (buyer) bits.push(buyer)
-                if (entry.orderId) bits.push('Same order')
-                return (
-                  <button key={entry.id} type="button" className="row" onClick={() => openDraft({ mode: 'edit', entry })}>
-                    <span>
-                      <span className="row-title">{entry.title}</span>
-                      <span className="row-sub">{bits.join(' · ')}</span>
-                    </span>
-                    <span className="row-amt num">
-                      <span className={tone(signed)}>{signedMoney(signed)}</span>
-                      {take ? <span className="row-sub">took {money(take.proceeds)}</span> : null}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          ))}
-        </div>
-      )}
+      ) : null}
+      {!loading && visible.length > 0 ? (
+        <Ledger rows={visible} entries={entries} shops={shops} customers={customers} onOpen={openDraft} />
+      ) : null}
+      {!loading && hidden.length > 0 ? (
+        <>
+          <p className="quiet ledger-note">Outside {heading}. Not counted in the totals above.</p>
+          <Ledger rows={hidden} entries={entries} shops={shops} customers={customers} onOpen={openDraft} />
+        </>
+      ) : null}
     </section>
+  )
+}
+
+function Ledger({
+  rows,
+  entries,
+  shops,
+  customers,
+  onOpen,
+}: {
+  rows: Entry[]
+  entries: Entry[]
+  shops: Shop[]
+  customers: Customer[]
+  onOpen: (draft: { mode: 'edit'; entry: Entry }) => void
+}) {
+  const buys = new Map(entries.map((entry) => [entry.id, entry]))
+  const grouped = new Map<string, Entry[]>()
+  for (const entry of rows) {
+    const list = grouped.get(entry.occurredOn) || []
+    list.push(entry)
+    grouped.set(entry.occurredOn, list)
+  }
+  return (
+    <div className="ledger">
+      {[...grouped.entries()].map(([date, day]) => (
+        <div key={date}>
+          <p className="day-label">{prettyDate(date)}</p>
+          {day.map((entry) => {
+            const cash = lineCash(entry)
+            const take = entry.lotId ? saleTake(buys.get(entry.lotId), entry) : null
+            const signed = take ? take.profit : entry.direction === 'out' ? -cash : cash
+            const bits = [movementLabel(entry), kindLabel(entry)]
+            if (entry.detail) bits.push(entry.detail)
+            if (entry.quantity !== 1) bits.push(`${entry.quantity} × ${money(entry.unitAmount)}`)
+            if (take) bits.push(`cost ${money(take.cost)}`)
+            const shopName = shops.find((shop) => shop.id === entry.shopId)?.name
+            if (shopName) bits.push(shopName)
+            const buyer = customers.find((customer) => customer.id === entry.customerId)?.name
+            if (buyer) bits.push(buyer)
+            if (entry.orderId) bits.push('Same order')
+            return (
+              <button key={entry.id} type="button" className="row" onClick={() => onOpen({ mode: 'edit', entry })}>
+                <span>
+                  <span className="row-title">{entry.title}</span>
+                  <span className="row-sub">{bits.join(' · ')}</span>
+                </span>
+                <span className="row-amt num">
+                  <span className={tone(signed)}>{signedMoney(signed)}</span>
+                  {take ? <span className="row-sub">took {money(take.proceeds)}</span> : null}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
   )
 }

@@ -33,8 +33,11 @@ export default function App() {
       setReady(true)
     })
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next)
-      setReady(true)
+      window.setTimeout(() => {
+        if (!live) return
+        setSession(next)
+        setReady(true)
+      }, 0)
     })
     return () => {
       live = false
