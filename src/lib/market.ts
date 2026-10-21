@@ -1,1 +1,1 @@
-export { caseMarket, imageLarge, pickSubtype, quoteKey } from '../../shared/market.js'
+export { caseMarket, imageLarge, lotMarket, pickSubtype, quoteKey } from '../../shared/market.js'

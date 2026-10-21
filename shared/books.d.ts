@@ -22,6 +22,7 @@ export type Entry = {
   trackingCarrier: string | null
   arrivesOn: string | null
   orderId: string | null
+  expectEach: number | null
   createdAt: string
 }
 
@@ -50,3 +51,19 @@ export function yearBounds(year: number): { start: string; end: string }
 export function costGroupKey(title: string): string
 export type AverageCost = { quantity: number; lines: number; fees: number; average: number }
 export function averageCosts(entries: Entry[]): Map<string, AverageCost>
+export type OpenEstimateLine = {
+  id: string
+  each: number | null
+  proceeds: number | null
+  cost: number
+  profit: number | null
+}
+export type OpenEstimate = {
+  lines: OpenEstimateLine[]
+  proceeds: number
+  cost: number
+  profit: number
+  priced: number
+  missing: number
+}
+export function openEstimate(lots: Lot[], eachOf: (lot: Lot) => number | null): OpenEstimate

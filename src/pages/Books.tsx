@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NetBars } from '../components/Chart.tsx'
+import { Estimate } from '../components/Estimate.tsx'
 import { lineCash, monthBounds, monthNets, realized, saleTake, summarize, yearNets } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, movementLabel, prettyDate, signedMoney, tone } from '../lib/format.ts'
 import { useShop } from '../store.tsx'
@@ -104,7 +105,7 @@ export function BooksPage() {
           setPeriod('month')
         }}
       />
-      {loading ? <p className="quiet">Loading your books…</p> : null}
+      {loading ? <p className="quiet">Loading your books…</p> : <Estimate />}
       {!loading && visible.length === 0 ? (
         <div className="empty">
           <p>Nothing in this range yet.</p>

@@ -78,6 +78,43 @@ function totalCostCents(buy) {
   return Math.round(Number(buy.quantity) * Number(buy.unitAmount) * 100) + cents(buy.fees || 0)
 }
 
+export function openEstimate(lots, eachOf) {
+  const lines = []
+  let proceeds = 0
+  let cost = 0
+  let missing = 0
+  for (const lot of lots || []) {
+    if (!(Number(lot.remaining) > 0)) continue
+    const raw = eachOf(lot)
+    const costCents = Math.round(Number(lot.costLeft) * 100)
+    if (raw == null || Number.isNaN(Number(raw))) {
+      missing += 1
+      lines.push({ id: lot.buy.id, each: null, proceeds: null, cost: costCents / 100, profit: null })
+      continue
+    }
+    const eachCents = Math.round(Number(raw) * 100)
+    const proceedsCents = Math.round(eachCents * Number(lot.remaining))
+    const profitCents = proceedsCents - costCents
+    proceeds += proceedsCents
+    cost += costCents
+    lines.push({
+      id: lot.buy.id,
+      each: eachCents / 100,
+      proceeds: proceedsCents / 100,
+      cost: costCents / 100,
+      profit: profitCents / 100,
+    })
+  }
+  return {
+    lines,
+    proceeds: proceeds / 100,
+    cost: cost / 100,
+    profit: (proceeds - cost) / 100,
+    priced: lines.length - missing,
+    missing,
+  }
+}
+
 export function positions(entries) {
   const salesByLot = new Map()
   for (const entry of entries) {

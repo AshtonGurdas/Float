@@ -23,6 +23,7 @@ type EntryRow = {
   tracking_carrier: string | null
   arrives_on: string | null
   order_id: string | null
+  expect_each: number | string | null
   created_at: string
 }
 
@@ -48,6 +49,7 @@ export function entryFromRow(row: EntryRow): Entry {
     trackingCarrier: row.tracking_carrier,
     arrivesOn: row.arrives_on,
     orderId: row.order_id || null,
+    expectEach: row.expect_each == null || row.expect_each === '' ? null : Number(row.expect_each),
     createdAt: row.created_at,
   }
 }
@@ -74,6 +76,7 @@ export function entryToRow(entry: EntryInput, userId: string) {
     tracking_carrier: entry.trackingNumber?.trim() ? entry.trackingCarrier || 'other' : null,
     arrives_on: entry.arrivesOn || null,
     order_id: entry.orderId || null,
+    expect_each: entry.expectEach == null || Number.isNaN(entry.expectEach) ? null : entry.expectEach,
   }
 }
 
@@ -144,6 +147,7 @@ export function entryFields(entry: Entry): EntryInput {
     trackingCarrier: entry.trackingCarrier,
     arrivesOn: entry.arrivesOn,
     orderId: entry.orderId,
+    expectEach: entry.expectEach,
   }
 }
 

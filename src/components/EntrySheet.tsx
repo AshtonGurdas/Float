@@ -317,6 +317,7 @@ export function EntrySheet() {
     trackingCarrier: shared.trackingCarrier || null,
     arrivesOn: shared.arrivesOn || null,
     orderId: shared.orderId,
+    expectEach: null,
     createdAt: '',
   }
   const previewCash = lines.length > 1 ? roundMoney(merchandise + feesNumber) : firstRead?.qty ? lineCash(previewEntry) : 0
@@ -382,6 +383,7 @@ export function EntrySheet() {
         trackingCarrier: shared.direction === 'out' && shared.trackingNumber.trim() ? shared.trackingCarrier || 'other' : null,
         arrivesOn: shared.direction === 'out' && !feeLine && /^\d{4}-\d{2}-\d{2}$/.test(shared.arrivesOn) ? shared.arrivesOn : null,
         orderId,
+        expectEach: !feeLine && line.id ? (entries.find((item) => item.id === line.id)?.expectEach ?? null) : null,
       }
       return { input, id: line.id }
     })

@@ -3,17 +3,14 @@ import { Thumb } from '../components/Thumb.tsx'
 import { picturesFor, type Quote } from '../lib/api.ts'
 import { averageCosts, costGroupKey, lineCash, positions, roundMoney, type AverageCost, type Entry, type Lot } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
-import { quoteKey } from '../lib/market.ts'
+import { lotMarket, quoteKey } from '../lib/market.ts'
 import { CARRIERS, carrierLabel, guessCarrier, trackingUrl } from '../../shared/tracking.js'
 import { entryFields } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
 
 function heldMarket(lot: Lot, quote: Quote | undefined) {
   if (!quote || quote.market == null) return null
-  if (lot.buy.itemKind === 'case' && lot.buy.boxesPerCase && !/case/i.test(quote.name)) {
-    return roundMoney(quote.market * lot.buy.boxesPerCase)
-  }
-  return quote.market
+  return lotMarket(lot.buy.itemKind, lot.buy.boxesPerCase, quote.name, quote.market)
 }
 
 export function InventoryPage() {

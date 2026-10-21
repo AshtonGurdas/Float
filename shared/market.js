@@ -33,6 +33,15 @@ export function caseMarket(name, market, boxes) {
   return Math.round(price * count * 100) / 100
 }
 
+export function lotMarket(kind, boxesPerCase, quoteName, market) {
+  if (market == null || Number.isNaN(Number(market))) return null
+  const price = Number(market)
+  if (kind === 'case' && Number(boxesPerCase) > 0 && !/case/i.test(quoteName || '')) {
+    return Math.round(price * Number(boxesPerCase) * 100) / 100
+  }
+  return price
+}
+
 export function quoteKey(productId, subtype) {
   return `${productId}:${subtype || ''}`
 }

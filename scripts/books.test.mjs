@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, positions, realized, saleTake, summarize } from '../shared/books.js'
+import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, summarize } from '../shared/books.js'
+import { lotMarket } from '../shared/market.js'
 
 function entry(overrides) {
   return {
@@ -136,4 +137,50 @@ test('fees and misc expenses are not inventory', () => {
   const lots = positions(rows)
   assert.equal(lots.length, 1)
   assert.equal(lots[0].buy.title, 'Booster box')
+})
+
+test('a ballpark uses the price you give and leaves the cash profit alone', () => {
+  const buy = entry({
+    id: 'lot',
+    itemKind: 'box',
+    title: 'Radiance box',
+    quantity: 2,
+    unitAmount: 100,
+    fees: 10,
+    expectEach: 180,
+  })
+  const sale = entry({
+    id: 'sale',
+    direction: 'in',
+    quantity: 1,
+    unitAmount: 150,
+    occurredOn: '2026-09-18',
+    lotId: 'lot',
+    createdAt: '2026-09-18T12:00:00Z',
+  })
+  const rows = [buy, sale]
+  const lots = positions(rows)
+  const estimate = openEstimate(lots, (lot) => lot.buy.expectEach)
+  assert.equal(lots[0].remaining, 1)
+  assert.equal(lots[0].costLeft, 105)
+  assert.equal(estimate.proceeds, 180)
+  assert.equal(estimate.cost, 105)
+  assert.equal(estimate.profit, 75)
+  assert.equal(estimate.priced, 1)
+  assert.equal(estimate.missing, 0)
+  assert.deepEqual(realized(rows), { total: 45, count: 1 })
+  assert.equal(summarize(rows).net, -60)
+  const unpriced = openEstimate(lots, () => null)
+  assert.equal(unpriced.priced, 0)
+  assert.equal(unpriced.missing, 1)
+  assert.equal(unpriced.profit, 0)
+  const sold = entry({ id: 'gone', quantity: 1, unitAmount: 40 })
+  const gone = positions([
+    sold,
+    entry({ id: 'sold', direction: 'in', quantity: 1, unitAmount: 50, lotId: 'gone' }),
+  ])
+  assert.equal(openEstimate(gone, () => 80).priced, 0)
+  assert.equal(lotMarket('case', 6, 'Radiance Booster Display', 100), 600)
+  assert.equal(lotMarket('case', 6, 'Radiance Booster Case', 540), 540)
+  assert.equal(lotMarket('box', null, 'Radiance Booster Display', 100), 100)
 })
