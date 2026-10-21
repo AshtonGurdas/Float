@@ -17,6 +17,7 @@ export type Entry = {
   boxesPerCase: number | null
   lotId: string | null
   shopId: string | null
+  customerId: string | null
   trackingNumber: string | null
   trackingCarrier: string | null
   arrivesOn: string | null

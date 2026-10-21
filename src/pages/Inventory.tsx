@@ -5,6 +5,7 @@ import { averageCosts, costGroupKey, lineCash, positions, roundMoney, type Avera
 import { kindLabel, money, monthLabel, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
 import { quoteKey } from '../lib/market.ts'
 import { CARRIERS, carrierLabel, guessCarrier, trackingUrl } from '../../shared/tracking.js'
+import { entryFields } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
 
 function heldMarket(lot: Lot, quote: Quote | undefined) {
@@ -353,24 +354,9 @@ function TrackingSheet({ lot, onClose }: { lot: Lot; onClose: () => void }) {
     setError(null)
     try {
       await saveEntry({
-        direction: lot.buy.direction,
-        itemKind: lot.buy.itemKind,
-        title: lot.buy.title,
-        detail: lot.buy.detail,
-        quantity: lot.buy.quantity,
-        unitAmount: lot.buy.unitAmount,
-        fees: lot.buy.fees,
-        occurredOn: lot.buy.occurredOn,
-        notes: lot.buy.notes,
-        productId: lot.buy.productId,
-        subtype: lot.buy.subtype,
-        boxesPerCase: lot.buy.boxesPerCase,
-        lotId: lot.buy.lotId,
-        shopId: lot.buy.shopId,
+        ...entryFields(lot.buy),
         trackingNumber: number.trim() || null,
         trackingCarrier: number.trim() ? chosen || 'other' : null,
-        arrivesOn: lot.buy.arrivesOn,
-        orderId: lot.buy.orderId,
       }, lot.buy.id)
       onClose()
     } catch (err) {

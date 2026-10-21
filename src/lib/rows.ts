@@ -18,6 +18,7 @@ type EntryRow = {
   boxes_per_case: number | null
   lot_id: string | null
   shop_id: string | null
+  customer_id: string | null
   tracking_number: string | null
   tracking_carrier: string | null
   arrives_on: string | null
@@ -42,6 +43,7 @@ export function entryFromRow(row: EntryRow): Entry {
     boxesPerCase: row.boxes_per_case == null ? null : Number(row.boxes_per_case),
     lotId: row.lot_id,
     shopId: row.shop_id,
+    customerId: row.customer_id,
     trackingNumber: row.tracking_number,
     trackingCarrier: row.tracking_carrier,
     arrivesOn: row.arrives_on,
@@ -67,6 +69,7 @@ export function entryToRow(entry: EntryInput, userId: string) {
     boxes_per_case: entry.itemKind === 'case' ? entry.boxesPerCase : null,
     lot_id: entry.lotId,
     shop_id: entry.shopId,
+    customer_id: entry.customerId,
     tracking_number: entry.trackingNumber?.trim() || null,
     tracking_carrier: entry.trackingNumber?.trim() ? entry.trackingCarrier || 'other' : null,
     arrives_on: entry.arrivesOn || null,
@@ -117,6 +120,69 @@ export function shopFromRow(row: ShopRow): Shop {
     notes: row.notes || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  }
+}
+
+export function entryFields(entry: Entry): EntryInput {
+  return {
+    direction: entry.direction,
+    itemKind: entry.itemKind,
+    title: entry.title,
+    detail: entry.detail,
+    quantity: entry.quantity,
+    unitAmount: entry.unitAmount,
+    fees: entry.fees,
+    occurredOn: entry.occurredOn,
+    notes: entry.notes,
+    productId: entry.productId,
+    subtype: entry.subtype,
+    boxesPerCase: entry.boxesPerCase,
+    lotId: entry.lotId,
+    shopId: entry.shopId,
+    customerId: entry.customerId,
+    trackingNumber: entry.trackingNumber,
+    trackingCarrier: entry.trackingCarrier,
+    arrivesOn: entry.arrivesOn,
+    orderId: entry.orderId,
+  }
+}
+
+export type Customer = {
+  id: string
+  name: string
+  notes: string
+  regular: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+type CustomerRow = {
+  id: string
+  name: string
+  notes: string | null
+  regular: boolean
+  created_at: string
+  updated_at: string
+}
+
+export function customerFromRow(row: CustomerRow): Customer {
+  return {
+    id: row.id,
+    name: row.name,
+    notes: row.notes || '',
+    regular: Boolean(row.regular),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+export function customerToRow(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>, userId: string) {
+  return {
+    user_id: userId,
+    name: customer.name.trim(),
+    notes: customer.notes.trim() || null,
+    regular: customer.regular,
+    updated_at: new Date().toISOString(),
   }
 }
 

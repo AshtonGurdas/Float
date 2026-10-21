@@ -52,7 +52,7 @@ export function Shell({
             <IconStock /> Stock
           </a>
           <a className={section === 'shops' ? 'is-active' : ''} href="#/shops" aria-current={section === 'shops' ? 'page' : undefined}>
-            <IconShops /> Shops
+            <IconShops /> People
           </a>
           <a className={section === 'events' ? 'is-active' : ''} href="#/events" aria-current={section === 'events' ? 'page' : undefined}>
             <IconEvents /> Events
@@ -95,7 +95,7 @@ export function Shell({
           <IconStock /> Stock
         </a>
         <a className={section === 'shops' ? 'is-active' : ''} href="#/shops" aria-current={section === 'shops' ? 'page' : undefined}>
-          <IconShops /> Shops
+          <IconShops /> People
         </a>
         <a className={section === 'events' ? 'is-active' : ''} href="#/events" aria-current={section === 'events' ? 'page' : undefined}>
           <IconEvents /> Events

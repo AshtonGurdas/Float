@@ -7,7 +7,7 @@ import { useShop } from '../store.tsx'
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
 
 export function BooksPage() {
-  const { entries, shops, loading, openDraft } = useShop()
+  const { entries, shops, customers, loading, openDraft } = useShop()
   const now = new Date()
   const [period, setPeriod] = useState<'month' | 'year' | 'all'>('month')
   const [year, setYear] = useState(now.getFullYear())
@@ -126,6 +126,8 @@ export function BooksPage() {
                 if (take) bits.push(`cost ${money(take.cost)}`)
                 const shopName = shops.find((shop) => shop.id === entry.shopId)?.name
                 if (shopName) bits.push(shopName)
+                const buyer = customers.find((customer) => customer.id === entry.customerId)?.name
+                if (buyer) bits.push(buyer)
                 if (entry.orderId) bits.push('Same order')
                 return (
                   <button key={entry.id} type="button" className="row" onClick={() => openDraft({ mode: 'edit', entry })}>

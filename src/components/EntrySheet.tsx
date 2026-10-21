@@ -48,6 +48,7 @@ type Shared = {
   occurredOn: string
   notes: string
   shopId: string | null
+  customerId: string | null
   trackingNumber: string
   trackingCarrier: string
   arrivesOn: string
@@ -84,6 +85,7 @@ function blankShared(partial?: Partial<Entry>, group?: Entry[]): Shared {
     occurredOn: partial?.occurredOn || todayISO(),
     notes: partial?.notes || '',
     shopId: partial?.shopId ?? null,
+    customerId: partial?.customerId ?? null,
     trackingNumber: partial?.trackingNumber || '',
     trackingCarrier: partial?.trackingCarrier || '',
     arrivesOn: partial?.arrivesOn || '',
@@ -105,7 +107,7 @@ function readLine(line: LineDraft) {
 }
 
 export function EntrySheet() {
-  const { draft, closeDraft, entries, shops, saveOrder, deleteEntry } = useShop()
+  const { draft, closeDraft, entries, shops, customers, saveOrder, deleteEntry } = useShop()
   const [lines, setLines] = useState<LineDraft[]>(() => [blankLine()])
   const [shared, setShared] = useState<Shared>(() => blankShared())
   const [error, setError] = useState<string | null>(null)
@@ -146,7 +148,7 @@ export function EntrySheet() {
         boxesPerCase: draft.buy.boxesPerCase,
         attachedName: draft.buy.productId ? draft.buy.title : '',
       })])
-      setShared(blankShared({ direction: 'in', lotId: draft.buy.id, occurredOn: todayISO(), shopId: null }))
+      setShared(blankShared({ direction: 'in', lotId: draft.buy.id, occurredOn: todayISO(), shopId: null, customerId: null }))
       return
     }
     setLines([blankLine(draft.preset)])
@@ -310,6 +312,7 @@ export function EntrySheet() {
     boxesPerCase: first?.itemKind === 'case' ? Number(first.boxesText) || 6 : null,
     lotId: shared.lotId,
     shopId: shared.shopId,
+    customerId: shared.customerId,
     trackingNumber: shared.trackingNumber || null,
     trackingCarrier: shared.trackingCarrier || null,
     arrivesOn: shared.arrivesOn || null,
@@ -374,6 +377,7 @@ export function EntrySheet() {
         boxesPerCase: line.itemKind === 'case' ? Math.max(1, Number(line.boxesText) || 6) : null,
         lotId: shared.lotId,
         shopId: shared.direction === 'out' && !feeLine ? shared.shopId : null,
+        customerId: shared.direction === 'in' && !feeLine ? shared.customerId : null,
         trackingNumber: shared.direction === 'out' ? shared.trackingNumber.trim() || null : null,
         trackingCarrier: shared.direction === 'out' && shared.trackingNumber.trim() ? shared.trackingCarrier || 'other' : null,
         arrivesOn: shared.direction === 'out' && !feeLine && /^\d{4}-\d{2}-\d{2}$/.test(shared.arrivesOn) ? shared.arrivesOn : null,
@@ -652,6 +656,18 @@ export function EntrySheet() {
                 <option key={shop.id} value={shop.id}>{shop.name}</option>
               ))}
             </select>
+          </label>
+        ) : null}
+        {shared.direction === 'in' ? (
+          <label className="field">
+            Customer
+            <select value={shared.customerId || ''} onChange={(event) => patchShared({ customerId: event.target.value || null })}>
+              <option value="">Not linked</option>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>{customer.name}</option>
+              ))}
+            </select>
+            {customers.length === 0 ? <span className="field-hint">Add a customer on People, then pick them on the next sale.</span> : null}
           </label>
         ) : null}
         <label className="field">
