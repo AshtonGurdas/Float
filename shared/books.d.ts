@@ -37,6 +37,7 @@ export type Lot = {
 }
 
 export function roundMoney(amount: number): number
+export function unitForTotal(total: number, quantity: number): number
 export function allocateFees(weights: number[], fee: number): number[]
 export function lineCashCents(entry: Entry): number
 export function lineCash(entry: Entry): number

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { searchProducts, type CatalogProduct } from '../lib/api.ts'
-import { allocateFees, lineCash, positions, roundMoney, type Direction, type Entry, type ItemKind } from '../lib/books.ts'
+import { allocateFees, lineCash, positions, roundMoney, unitForTotal, type Direction, type Entry, type ItemKind } from '../lib/books.ts'
 import { GAMES } from '../../shared/games.js'
 import { kindLabel, money, parseMoney, parseQty, todayISO } from '../lib/format.ts'
 import { pickSubtype } from '../lib/market.ts'
@@ -56,7 +56,7 @@ type Shared = {
   orderId: string | null
 }
 
-function blankLine(partial?: Partial<Entry> & { attachedName?: string; prices?: CatalogProduct['prices'] }): LineDraft {
+function blankLine(partial?: Partial<Entry> & { attachedName?: string; prices?: CatalogProduct['prices']; priceMode?: 'each' | 'total' }): LineDraft {
   const kind = partial?.itemKind || 'card'
   return {
     key: partial?.id || crypto.randomUUID(),
@@ -66,7 +66,7 @@ function blankLine(partial?: Partial<Entry> & { attachedName?: string; prices?: 
     detail: partial?.detail || '',
     quantityText: partial?.quantity != null ? String(partial.quantity) : '1',
     priceText: partial?.unitAmount != null && partial.unitAmount > 0 ? String(partial.unitAmount) : '',
-    priceMode: 'each',
+    priceMode: partial?.priceMode || 'each',
     productId: partial?.productId ?? null,
     subtype: partial?.subtype ?? null,
     attachedName: partial?.attachedName || '',
@@ -101,9 +101,14 @@ function readLine(line: LineDraft) {
   const unit = typed == null || Number.isNaN(typed) || !qty
     ? 0
     : !fee && line.priceMode === 'total'
-      ? roundMoney(typed / qty)
+      ? unitForTotal(typed, qty)
       : typed
-  return { qty, typed, unit, weight: !fee && qty ? (qty || 0) * unit : 0 }
+  const weight = !fee && qty
+    ? line.priceMode === 'total' && typed != null && !Number.isNaN(typed)
+      ? typed
+      : (qty || 0) * unit
+    : 0
+  return { qty, typed, unit, weight }
 }
 
 export function EntrySheet() {
@@ -139,11 +144,14 @@ export function EntrySheet() {
     }
     originalIds.current = []
     if (draft.mode === 'sell') {
+      const lot = positions(entriesRef.current).find((item) => item.buy.id === draft.buy.id)
+      const remaining = lot && lot.remaining > 0 ? lot.remaining : 1
       setLines([blankLine({
         itemKind: draft.buy.itemKind,
         title: draft.buy.title,
         detail: draft.buy.detail,
-        quantity: 1,
+        quantity: remaining,
+        priceMode: 'total',
         productId: draft.buy.productId,
         subtype: draft.buy.subtype,
         boxesPerCase: draft.buy.boxesPerCase,
@@ -455,7 +463,7 @@ export function EntrySheet() {
           <button type="button" className="btn ghost" onClick={closeDraft}>Close</button>
         </div>
         {sellingBuy ? (
-          <p className="quiet">Selling from {sellingBuy.title}. {maxQty == null ? '' : `${maxQty} still on hand.`}</p>
+          <p className="quiet">Selling from {sellingBuy.title}. {maxQty == null ? '' : `${maxQty} still on hand. The quantity starts at all of them.`}</p>
         ) : (
           <div className="seg" role="group" aria-label="Money direction">
             <button type="button" aria-pressed={shared.direction === 'out'} onClick={() => chooseDirection('out')}>Spent</button>
@@ -520,7 +528,7 @@ export function EntrySheet() {
                     <input inputMode="decimal" value={line.quantityText} onChange={(event) => updateLine(line.key, { quantityText: event.target.value })} />
                   </label>
                   <label className="field">
-                    {line.priceMode === 'total' ? 'Total price' : 'Price each'}
+                    {line.priceMode === 'total' ? (draft.mode === 'sell' ? 'Total you got' : 'Total price') : 'Price each'}
                     <input inputMode="decimal" value={line.priceText} onChange={(event) => updateLine(line.key, { priceText: event.target.value })} placeholder="0.00" />
                   </label>
                 </div>
@@ -530,11 +538,14 @@ export function EntrySheet() {
                   <input inputMode="decimal" value={line.priceText} onChange={(event) => updateLine(line.key, { priceText: event.target.value })} placeholder="0.00" />
                 </label>
               )}
-              {line.itemKind !== 'fee' && draft.mode !== 'sell' ? (
+              {line.itemKind !== 'fee' ? (
                 <div className="seg slim" role="group" aria-label="Price is each or total">
                   <button type="button" aria-pressed={line.priceMode === 'each'} onClick={() => switchPriceMode(line.key, 'each')}>Each</button>
                   <button type="button" aria-pressed={line.priceMode === 'total'} onClick={() => switchPriceMode(line.key, 'total')}>Total</button>
                 </div>
+              ) : null}
+              {draft.mode === 'sell' && line.itemKind !== 'fee' && line.priceMode === 'total' ? (
+                <span className="field-hint">One number for this whole sale. The pieces can have sold for different prices.</span>
               ) : null}
               {draft.mode !== 'sell' && line.itemKind !== 'fee' ? (
                 <div className="attach">

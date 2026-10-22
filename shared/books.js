@@ -8,6 +8,19 @@ export function roundMoney(amount) {
   return Math.round(Number(amount) * 100) / 100
 }
 
+export function unitForTotal(total, quantity) {
+  const qty = Number(quantity)
+  const target = Math.round(Number(total) * 100)
+  if (!(qty > 0) || !Number.isFinite(target)) return 0
+  let unit = target / 100 / qty
+  for (let step = 0; step < 6; step += 1) {
+    const got = Math.round(qty * unit * 100)
+    if (got === target) return unit
+    unit += (target - got) / qty / 100
+  }
+  return unit
+}
+
 export function allocateFees(weights, fee) {
   const count = Array.isArray(weights) ? weights.length : 0
   const feeCents = Math.round((Number(fee) || 0) * 100)

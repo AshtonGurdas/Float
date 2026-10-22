@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, summarize } from '../shared/books.js'
+import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, summarize, unitForTotal } from '../shared/books.js'
 import { lotMarket, toCad } from '../shared/market.js'
 
 function entry(overrides) {
@@ -187,4 +187,25 @@ test('a ballpark uses the price you give and leaves the cash profit alone', () =
   assert.equal(toCad(100, 1.4), 140)
   assert.equal(toCad(null, 1.4), null)
   assert.equal(toCad(10, 0), null)
+})
+
+test('a total sale price stays exact after it is split across the quantity', () => {
+  for (const [qty, total] of [[1, 743], [30, 743], [30, 13.99], [6, 100], [2, 10.01], [7, 0.1]]) {
+    const unit = unitForTotal(total, qty)
+    const cash = lineCash(entry({ direction: 'in', quantity: qty, unitAmount: unit, fees: 0 }))
+    assert.equal(cash, total, `${qty} at a total of ${total}`)
+  }
+  const buy = entry({ id: 'tins', quantity: 30, unitAmount: 13.99, fees: 75 })
+  const sale = entry({
+    id: 'tin-sale',
+    direction: 'in',
+    quantity: 30,
+    unitAmount: unitForTotal(743, 30),
+    lotId: 'tins',
+    fees: 0,
+  })
+  const lots = positions([buy, sale])
+  assert.equal(lots[0].remaining, 0)
+  assert.equal(saleTake(buy, sale).proceeds, 743)
+  assert.equal(saleTake(buy, sale).profit, 248.3)
 })

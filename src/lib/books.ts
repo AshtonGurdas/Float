@@ -11,6 +11,7 @@ export {
   roundMoney,
   saleTake,
   summarize,
+  unitForTotal,
   yearBounds,
   yearNets,
 } from '../../shared/books.js'
