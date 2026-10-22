@@ -1,12 +1,11 @@
 import type { Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
-import { IconBooks, IconEvents, IconMarket, IconPlus, IconProfit, IconReleases, IconShops, IconStock } from '../icons.tsx'
+import { IconBooks, IconEvents, IconMarket, IconPlus, IconReleases, IconShops, IconStock } from '../icons.tsx'
 import { parseRoute, sectionOf, type Route } from '../lib/route.ts'
 import { supabase } from '../lib/supabase.ts'
 import { useShop } from '../store.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
 import { BooksPage } from '../pages/Books.tsx'
-import { Estimate } from './Estimate.tsx'
 import { InventoryPage } from '../pages/Inventory.tsx'
 import { MarketPage } from '../pages/Market.tsx'
 import { EventsPage } from '../pages/Events.tsx'
@@ -46,9 +45,6 @@ export function Shell({
           <a className={section === 'books' ? 'is-active' : ''} href="#/" aria-current={section === 'books' ? 'page' : undefined}>
             <IconBooks /> Books
           </a>
-          <a className={section === 'profit' ? 'is-active' : ''} href="#/profit" aria-current={section === 'profit' ? 'page' : undefined}>
-            <IconProfit /> <span>Profit calculator</span>
-          </a>
           <a className={section === 'market' ? 'is-active' : ''} href="#/market" aria-current={section === 'market' ? 'page' : undefined}>
             <IconMarket /> Market
           </a>
@@ -81,7 +77,6 @@ export function Shell({
           </div>
         ) : null}
         {route.name === 'books' ? <BooksPage /> : null}
-        {route.name === 'profit' ? <Estimate /> : null}
         {route.name === 'market' ? <MarketPage /> : null}
         {route.name === 'inventory' ? <InventoryPage /> : null}
         {route.name === 'shops' ? <ShopsPage /> : null}
@@ -92,9 +87,6 @@ export function Shell({
       <nav className="tabbar" aria-label="Sections">
         <a className={section === 'books' ? 'is-active' : ''} href="#/" aria-current={section === 'books' ? 'page' : undefined}>
           <IconBooks /> Books
-        </a>
-        <a className={section === 'profit' ? 'is-active tab-wide' : 'tab-wide'} href="#/profit" aria-current={section === 'profit' ? 'page' : undefined}>
-          <IconProfit /> Profit calculator
         </a>
         <a className={section === 'market' ? 'is-active' : ''} href="#/market" aria-current={section === 'market' ? 'page' : undefined}>
           <IconMarket /> Market

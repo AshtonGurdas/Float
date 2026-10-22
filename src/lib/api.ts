@@ -124,13 +124,6 @@ export function cadRate() {
   })
 }
 
-export function stockMarkets(items: { id: string; title: string; detail: string }[]) {
-  return call<{ items: { id: string; productId: number; name: string; market: number | null }[] }>('/api/quotes', {
-    method: 'POST',
-    body: JSON.stringify({ lookup: 'stock', items }),
-  })
-}
-
 export function quotesFor(items: { productId: number; subtype: string }[]) {
   return call<{ items: Quote[] }>('/api/quotes', {
     method: 'POST',

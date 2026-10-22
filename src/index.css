@@ -109,7 +109,6 @@ h2 { font-size: 0.95rem; font-weight: 600; color: var(--muted); letter-spacing: 
 .release-day { margin: 22px 0 2px; }
 .release-day span { margin-left: 8px; }
 .tabbar .is-active { color: var(--text); }
-.tabbar a.tab-wide { white-space: normal; line-height: 1.15; text-align: center; }
 svg.icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 @media (min-width: 861px) {
@@ -244,18 +243,6 @@ button.lot { width: 100%; border: 0; border-bottom: 1px solid var(--line); backg
 .hero {
   padding: 8px 0 18px;
 }
-.hero-num.gold { color: var(--gold); }
-.pick-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
-.pick-list .chip {
-  white-space: normal;
-  text-align: left;
-  max-width: 100%;
-  height: auto;
-  padding: 8px 12px;
-  line-height: 1.25;
-}
-.when-block { margin-top: 18px; }
-.when-block .quiet { margin-top: 4px; }
 .hero-label { color: var(--muted); font-size: 0.9rem; }
 .hero-num {
   font-family: var(--serif);

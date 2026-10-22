@@ -1,6 +1,5 @@
 export type Route =
   | { name: 'books' }
-  | { name: 'profit' }
   | { name: 'market' }
   | { name: 'inventory' }
   | { name: 'shops' }
@@ -13,7 +12,6 @@ export function parseRoute(hash: string): Route {
   const [path, query = ''] = raw.split('?')
   const params = new URLSearchParams(query)
   const parts = path.split('/').filter(Boolean)
-  if (parts[0] === 'profit') return { name: 'profit' }
   if (parts[0] === 'market') return { name: 'market' }
   if (parts[0] === 'inventory') return { name: 'inventory' }
   if (parts[0] === 'shops') return { name: 'shops' }
@@ -26,7 +24,6 @@ export function parseRoute(hash: string): Route {
 }
 
 export function sectionOf(route: Route) {
-  if (route.name === 'profit') return 'profit'
   if (route.name === 'inventory') return 'inventory'
   if (route.name === 'shops') return 'shops'
   if (route.name === 'events') return 'events'
