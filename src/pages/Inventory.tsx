@@ -287,7 +287,7 @@ function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lo
   const proceeds = roundMoney(lot.sales.reduce((sum, sale) => sum + lineCash(sale), 0))
   const profit = roundMoney(proceeds - lot.unitCost * lot.soldQty)
   const bought = roundMoney(lot.unitCost * Number(lot.buy.quantity))
-  const showAverage = !soldOut && !!average && average.lines > 1
+  const showAverage = !soldOut && !!average && (average.lines > 1 || average.fees > 0)
   const image = quote?.imageUrl || photo || null
   return (
     <article className="lot">
@@ -320,7 +320,7 @@ function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lo
               <div className="is-average">
                 <span>Average</span>
                 <strong className="num">{money(average.average)}</strong>
-                <small>{countText(average.lines)} purchases · {countText(average.quantity)} on hand, before tax and shipping</small>
+                <small>{countText(average.lines)} purchases · {countText(average.quantity)} on hand{average.fees > 0 ? ', including tax and shipping' : ''}</small>
               </div>
             ) : null}
           </div>

@@ -95,7 +95,7 @@ test('a down month stays the cash net while sale profit stays separate', () => {
   assert.equal(realized([...rows, tin, tinSale], '2026-09-01', '2026-09-30').total, 45)
 })
 
-test('average cost counts each purchase once, skips tax and shipping, and keeps a case separate', () => {
+test('average cost counts each purchase once, includes tax and shipping, and keeps a case separate', () => {
   const rows = [
     entry({ id: 'a', itemKind: 'box', title: 'Riftbound League of Legends Radiance Booster Box', quantity: 2, unitAmount: 90, fees: 15 }),
     entry({ id: 'b', itemKind: 'box', title: 'Radiance Booster Display', quantity: 1, unitAmount: 120, fees: 0 }),
@@ -119,13 +119,18 @@ test('average cost counts each purchase once, skips tax and shipping, and keeps 
   )
   const averages = averageCosts(rows)
   const radiance = averages.get(costGroupKey(rows[0].title))
-  assert.equal(radiance.average, 96.67)
+  assert.equal(radiance.average, 115)
   assert.equal(radiance.quantity, 8)
   assert.equal(radiance.lines, 3)
   assert.equal(radiance.fees, 55)
-  assert.equal(averages.get(costGroupKey('Radiance Booster Case')).average, 500)
+  assert.equal(averages.get(costGroupKey('Radiance Booster Case')).average, 520)
   assert.equal(averages.get(costGroupKey('Radiance Booster Case')).lines, 1)
   assert.equal(averages.has(costGroupKey('Shipping')), false)
+  const priced = entry({ id: 'fee-box', itemKind: 'box', title: 'Surging Sparks Booster Box', quantity: 1, unitAmount: 165, fees: 10 })
+  const plain = entry({ id: 'plain-box', itemKind: 'box', title: 'Surging Sparks Booster Box', quantity: 1, unitAmount: 165, fees: 0 })
+  assert.equal(averageCosts([priced]).get(costGroupKey(priced.title)).average, 175)
+  assert.equal(averageCosts([plain]).get(costGroupKey(plain.title)).average, 165)
+  assert.equal(averageCosts([priced, plain]).get(costGroupKey(priced.title)).average, 170)
 })
 
 test('fees and misc expenses are not inventory', () => {

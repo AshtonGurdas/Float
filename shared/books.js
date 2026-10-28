@@ -279,7 +279,7 @@ export function averageCosts(entries) {
       quantity: Math.round(group.quantity * 1000) / 1000,
       lines: group.lines,
       fees: group.feeCents / 100,
-      average: roundMoney(group.priceCents / 100 / group.lines),
+      average: roundMoney((group.priceCents + group.feeCents) / 100 / group.lines),
     })
   }
   return result
