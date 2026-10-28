@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, summarize, unitForTotal } from '../shared/books.js'
+import { allocateFees, averageCosts, cashOn, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, summarize, unitForTotal, yearNets } from '../shared/books.js'
 import { lotMarket, toCad } from '../shared/market.js'
 
 function entry(overrides) {
@@ -192,6 +192,39 @@ test('a ballpark uses the price you give and leaves the cash profit alone', () =
   assert.equal(toCad(100, 1.4), 140)
   assert.equal(toCad(null, 1.4), null)
   assert.equal(toCad(10, 0), null)
+})
+
+test('credit purchases count on the next month bill and debit stays in the purchase month', () => {
+  const debit = entry({ id: 'debit', unitAmount: 100, fees: 5, occurredOn: '2026-10-15', paidWith: 'debit' })
+  const credit = entry({ id: 'credit', unitAmount: 200, fees: 10, occurredOn: '2026-10-31', paidWith: 'credit' })
+  const december = entry({ id: 'dec', unitAmount: 50, occurredOn: '2026-12-31', paidWith: 'credit' })
+  const unmarked = entry({ id: 'old', unitAmount: 40, occurredOn: '2026-10-02' })
+  const sale = entry({
+    id: 'sale',
+    direction: 'in',
+    unitAmount: 80,
+    occurredOn: '2026-10-20',
+    lotId: 'credit',
+    paidWith: 'credit',
+  })
+  const rows = [debit, credit, december, unmarked, sale]
+  assert.equal(cashOn(debit), '2026-10-15')
+  assert.equal(cashOn(unmarked), '2026-10-02')
+  assert.equal(cashOn(credit), '2026-11-01')
+  assert.equal(cashOn(december), '2027-01-01')
+  assert.equal(cashOn(sale), '2026-10-20')
+  assert.deepEqual(summarize(rows, '2026-10-01', '2026-10-31'), { spent: 145, made: 80, net: -65 })
+  assert.deepEqual(summarize(rows, '2026-11-01', '2026-11-30'), { spent: 210, made: 0, net: -210 })
+  assert.equal(summarize(rows, '2026-12-01', '2026-12-31').spent, 0)
+  assert.equal(summarize(rows, '2027-01-01', '2027-01-31').spent, 50)
+  assert.equal(monthNets(rows, 2026)[9], -65)
+  assert.equal(monthNets(rows, 2026)[10], -210)
+  assert.equal(monthNets(rows, 2026)[11], 0)
+  assert.equal(monthNets(rows, 2027)[0], -50)
+  assert.equal(yearNets(rows).find((item) => item.year === '2027').net, -50)
+  assert.deepEqual(realized(rows, '2026-10-01', '2026-10-31'), { total: -130, count: 1 })
+  assert.equal(positions([credit])[0].unitCost, 210)
+  assert.equal(positions([entry({ id: 'credit', unitAmount: 200, fees: 10, occurredOn: '2026-10-31' })])[0].unitCost, 210)
 })
 
 test('a total sale price stays exact after it is split across the quantity', () => {

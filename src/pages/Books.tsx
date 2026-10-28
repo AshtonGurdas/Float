@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { NetBars } from '../components/Chart.tsx'
-import { lineCash, monthBounds, monthNets, realized, saleTake, summarize, yearNets, type Entry } from '../lib/books.ts'
+import { cashOn, lineCash, monthBounds, monthNets, realized, saleTake, summarize, yearNets, type Entry } from '../lib/books.ts'
 import { kindLabel, money, monthLabel, movementLabel, prettyDate, signedMoney, tone } from '../lib/format.ts'
 import type { Customer, Shop } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
@@ -25,14 +25,19 @@ export function BooksPage() {
 
   const visible = entries.filter((entry) => {
     if (!bounds) return true
-    return entry.occurredOn >= bounds.start && entry.occurredOn <= bounds.end
+    const date = cashOn(entry)
+    return date >= bounds.start && date <= bounds.end
   })
   const hidden = bounds
-    ? entries.filter((entry) => entry.occurredOn < bounds.start || entry.occurredOn > bounds.end)
+    ? entries.filter((entry) => {
+        const date = cashOn(entry)
+        return date < bounds.start || date > bounds.end
+      })
     : []
 
+  const horizon = now.getFullYear() * 12 + now.getMonth() + 1
   const atFuture = period === 'month'
-    ? year > now.getFullYear() || (year === now.getFullYear() && month >= now.getMonth() + 1)
+    ? year * 12 + (month - 1) >= horizon
     : year >= now.getFullYear()
 
   function shift(delta: number) {
@@ -85,7 +90,7 @@ export function BooksPage() {
             <strong className={`num ${tone(profit.total)}`}>{signedMoney(profit.total)}</strong>
           </div>
         </div>
-        <p className="quiet">Net is made minus spent. Profit is only what you kept on cards you sold.</p>
+        <p className="quiet">Net is made minus spent. Profit is only what you kept on cards you sold. A credit purchase counts on next month's bill.</p>
       </div>
       <NetBars
         values={bars}
@@ -140,22 +145,36 @@ function Ledger({
   onOpen: (draft: { mode: 'edit'; entry: Entry }) => void
 }) {
   const buys = new Map(entries.map((entry) => [entry.id, entry]))
-  const grouped = new Map<string, Entry[]>()
+  const grouped = new Map<string, { key: string; sort: string; label: string; rows: Entry[] }>()
   for (const entry of rows) {
-    const list = grouped.get(entry.occurredOn) || []
-    list.push(entry)
-    grouped.set(entry.occurredOn, list)
+    const credit = entry.direction === 'out' && entry.paidWith === 'credit'
+    const cash = cashOn(entry)
+    const key = credit ? `credit:${cash.slice(0, 7)}` : entry.occurredOn
+    let group = grouped.get(key)
+    if (!group) {
+      const [billYear, billMonth] = cash.slice(0, 7).split('-').map(Number)
+      group = {
+        key,
+        sort: credit ? `${cash.slice(0, 7)}-32` : entry.occurredOn,
+        label: credit ? `Credit · ${monthLabel(billYear, billMonth)}` : prettyDate(entry.occurredOn),
+        rows: [],
+      }
+      grouped.set(key, group)
+    }
+    group.rows.push(entry)
   }
+  const ordered = [...grouped.values()].sort((a, b) => b.sort.localeCompare(a.sort))
   return (
     <div className="ledger">
-      {[...grouped.entries()].map(([date, day]) => (
-        <div key={date}>
-          <p className="day-label">{prettyDate(date)}</p>
-          {day.map((entry) => {
+      {ordered.map((group) => (
+        <div key={group.key}>
+          <p className="day-label">{group.label}</p>
+          {group.rows.map((entry) => {
             const cash = lineCash(entry)
             const take = entry.lotId ? saleTake(buys.get(entry.lotId), entry) : null
             const signed = take ? take.profit : entry.direction === 'out' ? -cash : cash
             const bits = [movementLabel(entry), kindLabel(entry)]
+            if (entry.direction === 'out' && entry.paidWith === 'credit') bits.push(`Bought ${prettyDate(entry.occurredOn)}`)
             if (entry.detail) bits.push(entry.detail)
             if (entry.quantity !== 1) bits.push(`${entry.quantity} × ${money(entry.unitAmount)}`)
             if (take) bits.push(`cost ${money(take.cost)}`)

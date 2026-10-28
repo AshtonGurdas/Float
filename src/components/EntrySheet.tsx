@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { searchProducts, type CatalogProduct } from '../lib/api.ts'
-import { allocateFees, lineCash, positions, roundMoney, unitForTotal, type Direction, type Entry, type ItemKind } from '../lib/books.ts'
+import { allocateFees, cashOn, lineCash, positions, roundMoney, unitForTotal, type Direction, type Entry, type ItemKind, type PaidWith } from '../lib/books.ts'
 import { GAMES } from '../../shared/games.js'
-import { kindLabel, money, parseMoney, parseQty, todayISO } from '../lib/format.ts'
+import { kindLabel, money, monthLabel, parseMoney, parseQty, todayISO } from '../lib/format.ts'
 import { pickSubtype } from '../lib/market.ts'
 import { CARRIERS, guessCarrier } from '../../shared/tracking.js'
 import type { EntryInput } from '../lib/rows.ts'
@@ -54,6 +54,7 @@ type Shared = {
   arrivesOn: string
   lotId: string | null
   orderId: string | null
+  paidWith: PaidWith
 }
 
 function blankLine(partial?: Partial<Entry> & { attachedName?: string; prices?: CatalogProduct['prices']; priceMode?: 'each' | 'total' }): LineDraft {
@@ -91,6 +92,7 @@ function blankShared(partial?: Partial<Entry>, group?: Entry[]): Shared {
     arrivesOn: partial?.arrivesOn || '',
     lotId: partial?.lotId ?? null,
     orderId: group && group.length > 1 ? partial?.orderId || group.find((entry) => entry.orderId)?.orderId || null : partial?.orderId ?? null,
+    paidWith: (group || []).some((entry) => entry.paidWith === 'credit') || partial?.paidWith === 'credit' ? 'credit' : 'debit',
   }
 }
 
@@ -327,12 +329,16 @@ export function EntrySheet() {
     arrivesOn: shared.arrivesOn || null,
     orderId: shared.orderId,
     expectEach: null,
+    paidWith: shared.direction === 'out' && shared.paidWith === 'credit' ? 'credit' : 'debit',
     createdAt: '',
   }
   const previewCash = lines.length > 1 ? roundMoney(merchandise + feesNumber) : firstRead?.qty ? lineCash(previewEntry) : 0
+  const creditNote = shared.direction === 'out' && shared.paidWith === 'credit'
+    ? ` The card bill counts in ${billLabel(shared.occurredOn)}.`
+    : ''
   const sentence = lines.length > 1
-    ? `Spent ${money(previewCash)} on ${lines.length} products${feesNumber ? `, including ${money(feesNumber)} shipping and tax` : ''}.`
-    : describe(previewEntry, previewCash)
+    ? `Spent ${money(previewCash)} on ${lines.length} products${feesNumber ? `, including ${money(feesNumber)} shipping and tax` : ''}.${creditNote}`
+    : `${describe(previewEntry, previewCash)}${previewEntry.paidWith === 'credit' && previewEntry.quantity ? creditNote : ''}`
 
   async function onSave() {
     setError(null)
@@ -393,6 +399,7 @@ export function EntrySheet() {
         arrivesOn: shared.direction === 'out' && !feeLine && /^\d{4}-\d{2}-\d{2}$/.test(shared.arrivesOn) ? shared.arrivesOn : null,
         orderId,
         expectEach: !feeLine && line.id ? (entries.find((item) => item.id === line.id)?.expectEach ?? null) : null,
+        paidWith: shared.direction === 'out' && shared.paidWith === 'credit' ? 'credit' : 'debit',
       }
       return { input, id: line.id }
     })
@@ -636,6 +643,20 @@ export function EntrySheet() {
           Date
           <input type="date" value={shared.occurredOn} onChange={(event) => patchShared({ occurredOn: event.target.value })} />
         </label>
+        {shared.direction === 'out' ? (
+          <div className="field">
+            <span id="paid-with-label">Paid with</span>
+            <div className="seg" role="group" aria-labelledby="paid-with-label">
+              <button type="button" aria-pressed={shared.paidWith === 'debit'} onClick={() => patchShared({ paidWith: 'debit' })}>Debit</button>
+              <button type="button" aria-pressed={shared.paidWith === 'credit'} onClick={() => patchShared({ paidWith: 'credit' })}>Credit</button>
+            </div>
+            <span className="field-hint">
+              {shared.paidWith === 'credit'
+                ? `Counts in ${billLabel(shared.occurredOn)}, when the card is due. It is not part of this month's spent.`
+                : 'Counts in the month of this date.'}
+            </span>
+          </div>
+        ) : null}
         {purchase ? (
           <label className="field">
             Arrives
@@ -720,6 +741,13 @@ export function EntrySheet() {
       </div>
     </div>
   )
+}
+
+function billLabel(occurredOn: string) {
+  const cash = cashOn({ direction: 'out', paidWith: 'credit', occurredOn })
+  const match = /^(\d{4})-(\d{2})/.exec(cash)
+  if (!match || cash === occurredOn) return 'next month'
+  return monthLabel(Number(match[1]), Number(match[2]))
 }
 
 function orderGroup(entries: Entry[], entry: Entry) {

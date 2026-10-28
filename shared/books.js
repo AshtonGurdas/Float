@@ -65,17 +65,34 @@ export function lineCash(entry) {
   return lineCashCents(entry) / 100
 }
 
-function inWindow(entry, start, end) {
-  if (start && entry.occurredOn < start) return false
-  if (end && entry.occurredOn > end) return false
+export function cashOn(entry) {
+  const bought = String((entry && entry.occurredOn) || '')
+  if (!entry || entry.direction !== 'out' || entry.paidWith !== 'credit') return bought
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(bought)
+  if (!match) return bought
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (month < 1 || month > 12) return bought
+  const nextYear = month === 12 ? year + 1 : year
+  const nextMonth = month === 12 ? 1 : month + 1
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+}
+
+function inWindowOn(date, start, end) {
+  if (start && date < start) return false
+  if (end && date > end) return false
   return true
+}
+
+function inWindow(entry, start, end) {
+  return inWindowOn(entry.occurredOn, start, end)
 }
 
 export function summarize(entries, start, end) {
   let spent = 0
   let made = 0
   for (const entry of entries) {
-    if (!inWindow(entry, start, end)) continue
+    if (!inWindowOn(cashOn(entry), start, end)) continue
     const cash = lineCashCents(entry)
     if (entry.direction === 'out') spent += cash
     else made += cash
@@ -203,8 +220,9 @@ export function monthNets(entries, year) {
   const nets = Array(12).fill(0)
   const prefix = `${year}-`
   for (const entry of entries) {
-    if (!entry.occurredOn.startsWith(prefix)) continue
-    const month = Number(entry.occurredOn.slice(5, 7)) - 1
+    const date = cashOn(entry)
+    if (!date.startsWith(prefix)) continue
+    const month = Number(date.slice(5, 7)) - 1
     if (month < 0 || month > 11) continue
     const cash = lineCashCents(entry)
     nets[month] += entry.direction === 'out' ? -cash : cash
@@ -215,7 +233,7 @@ export function monthNets(entries, year) {
 export function yearNets(entries) {
   const map = new Map()
   for (const entry of entries) {
-    const year = entry.occurredOn.slice(0, 4)
+    const year = cashOn(entry).slice(0, 4)
     const cash = lineCashCents(entry)
     const delta = entry.direction === 'out' ? -cash : cash
     map.set(year, (map.get(year) || 0) + delta)

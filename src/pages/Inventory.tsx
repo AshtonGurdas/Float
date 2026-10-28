@@ -300,6 +300,7 @@ function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lo
             lot.buy.detail,
             soldOut ? 'Sold' : `${lot.remaining} left`,
             soldOut ? `bought ${money(bought)}` : '',
+            lot.buy.paidWith === 'credit' ? 'Credit' : '',
             lot.buy.orderId ? 'Same order' : '',
           ].filter(Boolean).join(' · ')}
         </p>
