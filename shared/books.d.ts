@@ -1,6 +1,5 @@
 export type Direction = 'out' | 'in'
 export type ItemKind = 'card' | 'box' | 'case' | 'sealed' | 'fee' | 'other'
-export type PaidWith = 'debit' | 'credit'
 
 export type Entry = {
   id: string
@@ -24,7 +23,6 @@ export type Entry = {
   arrivesOn: string | null
   orderId: string | null
   expectEach: number | null
-  paidWith: PaidWith
   createdAt: string
 }
 
@@ -43,7 +41,6 @@ export function unitForTotal(total: number, quantity: number): number
 export function allocateFees(weights: number[], fee: number): number[]
 export function lineCashCents(entry: Entry): number
 export function lineCash(entry: Entry): number
-export function cashOn(entry: Pick<Entry, 'direction' | 'paidWith' | 'occurredOn'>): string
 export function summarize(entries: Entry[], start?: string, end?: string): { spent: number; made: number; net: number }
 export function positions(entries: Entry[]): Lot[]
 export function saleTake(buy: Entry | undefined, sale: Entry): { proceeds: number; cost: number; profit: number } | null
