@@ -43,6 +43,8 @@ export function lineCashCents(entry: Entry): number
 export function lineCash(entry: Entry): number
 export function summarize(entries: Entry[], start?: string, end?: string): { spent: number; made: number; net: number }
 export function positions(entries: Entry[]): Lot[]
+export type Arrival = { entry: Entry; remaining: number }
+export function stillArriving(entries: Entry[]): Arrival[]
 export function saleTake(buy: Entry | undefined, sale: Entry): { proceeds: number; cost: number; profit: number } | null
 export function realized(entries: Entry[], start?: string, end?: string): { total: number; count: number }
 export function monthNets(entries: Entry[], year: number): number[]

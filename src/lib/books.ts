@@ -10,9 +10,10 @@ export {
   realized,
   roundMoney,
   saleTake,
+  stillArriving,
   summarize,
   unitForTotal,
   yearBounds,
   yearNets,
 } from '../../shared/books.js'
-export type { AverageCost, Direction, Entry, ItemKind, Lot } from '../../shared/books.js'
+export type { Arrival, AverageCost, Direction, Entry, ItemKind, Lot } from '../../shared/books.js'

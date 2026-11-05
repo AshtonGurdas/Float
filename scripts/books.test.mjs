@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, summarize, unitForTotal } from '../shared/books.js'
+import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, stillArriving, summarize, unitForTotal } from '../shared/books.js'
 import { lotMarket, toCad } from '../shared/market.js'
 
 function entry(overrides) {
@@ -192,6 +192,16 @@ test('a ballpark uses the price you give and leaves the cash profit alone', () =
   assert.equal(toCad(100, 1.4), 140)
   assert.equal(toCad(null, 1.4), null)
   assert.equal(toCad(10, 0), null)
+})
+
+test('a sold purchase leaves the arrival calendar and a partial sale keeps what is left', () => {
+  const sold = entry({ id: 'op18', title: 'OP-18', quantity: 2, arrivesOn: '2026-11-20', occurredOn: '2026-10-15' })
+  const refund = entry({ id: 'refund', direction: 'in', quantity: 2, lotId: 'op18', occurredOn: '2026-11-04' })
+  const kept = entry({ id: 'kept', title: 'Still coming', quantity: 2, arrivesOn: '2026-11-20', occurredOn: '2026-10-16' })
+  const half = entry({ id: 'half', direction: 'in', quantity: 1, lotId: 'kept', occurredOn: '2026-11-04' })
+  const undated = entry({ id: 'loose', title: 'No date', quantity: 1 })
+  const rows = stillArriving([sold, refund, kept, half, undated])
+  assert.deepEqual(rows.map((item) => [item.entry.id, item.remaining]), [['kept', 1]])
 })
 
 test('a total sale price stays exact after it is split across the quantity', () => {

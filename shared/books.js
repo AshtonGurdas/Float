@@ -166,6 +166,19 @@ export function positions(entries) {
   return lots
 }
 
+export function stillArriving(entries) {
+  const left = new Map()
+  for (const lot of positions(entries)) left.set(lot.buy.id, lot.remaining)
+  const rows = []
+  for (const entry of entries) {
+    if (entry.direction !== 'out' || entry.itemKind === 'fee' || !entry.arrivesOn) continue
+    const remaining = left.has(entry.id) ? left.get(entry.id) : Number(entry.quantity)
+    if (!(remaining > 0)) continue
+    rows.push({ entry, remaining })
+  }
+  return rows
+}
+
 function saleTakeCents(buy, sale) {
   if (!buy || !sale || sale.direction !== 'in' || !sale.lotId) return null
   const qty = Number(buy.quantity)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Thumb } from '../components/Thumb.tsx'
 import { picturesFor, type Quote } from '../lib/api.ts'
-import { averageCosts, costGroupKey, lineCash, positions, roundMoney, type AverageCost, type Entry, type Lot } from '../lib/books.ts'
+import { averageCosts, costGroupKey, lineCash, positions, roundMoney, stillArriving, type AverageCost, type Entry, type Lot } from '../lib/books.ts'
 import { rateLabel, useCadRate } from '../lib/cad.ts'
 import { kindLabel, money, monthLabel, prettyDate, signedMoney, todayISO, tone } from '../lib/format.ts'
 import { lotMarket, quoteKey, toCad } from '../lib/market.ts'
@@ -197,12 +197,11 @@ function ArrivalCalendar({
   onSelect: (iso: string) => void
 }) {
   const { openDraft } = useShop()
-  const byDay = new Map<string, Entry[]>()
-  for (const entry of entries) {
-    if (entry.direction !== 'out' || entry.itemKind === 'fee' || !entry.arrivesOn) continue
-    const list = byDay.get(entry.arrivesOn) || []
-    list.push(entry)
-    byDay.set(entry.arrivesOn, list)
+  const byDay = new Map<string, { entry: Entry; remaining: number }[]>()
+  for (const item of stillArriving(entries)) {
+    const list = byDay.get(item.entry.arrivesOn || '') || []
+    list.push(item)
+    byDay.set(item.entry.arrivesOn || '', list)
   }
   const first = new Date(cursor.year, cursor.month - 1, 1)
   const days = new Date(cursor.year, cursor.month, 0).getDate()
@@ -212,7 +211,7 @@ function ArrivalCalendar({
   while (cells.length % 7) cells.push(null)
   const monthKey = `${cursor.year}-${pad(cursor.month)}`
   const monthCount = [...byDay.keys()].filter((iso) => iso.startsWith(monthKey)).reduce((sum, iso) => sum + (byDay.get(iso)?.length || 0), 0)
-  const items = (byDay.get(selected) || []).slice().sort((a, b) => a.title.localeCompare(b.title))
+  const items = (byDay.get(selected) || []).slice().sort((a, b) => a.entry.title.localeCompare(b.entry.title))
 
   function shift(by: number) {
     const date = new Date(cursor.year, cursor.month - 1 + by, 1)
@@ -256,14 +255,16 @@ function ArrivalCalendar({
         <p className="quiet">Nothing arriving this day. Set Arrives when you add or edit a purchase.</p>
       ) : (
         <div className="ledger">
-          {items.map((entry) => {
+          {items.map((item) => {
+            const entry = item.entry
             const quote = quotes[quoteKey(entry.productId || 0, entry.subtype)]
+            const pieces = `${countText(item.remaining)} ${item.remaining === 1 ? 'piece' : 'pieces'}`
             return (
               <article key={entry.id} className="lot">
                 <Thumb src={quote?.imageUrl || photos[entry.id] || null} name={entry.title} />
                 <button type="button" className="lot-open" onClick={() => openDraft({ mode: 'edit', entry })}>
                   <p className="row-title">{entry.title}</p>
-                  <p className="row-sub">{[entry.detail, `${entry.quantity} ${entry.quantity === 1 ? 'piece' : 'pieces'}`].filter(Boolean).join(' · ')}</p>
+                  <p className="row-sub">{[entry.detail, pieces].filter(Boolean).join(' · ')}</p>
                 </button>
               </article>
             )
