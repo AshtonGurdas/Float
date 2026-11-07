@@ -1,4 +1,4 @@
-const CODE_PREFIX = new Set(['OP', 'EB', 'ST', 'PRB', 'DP', 'GC', 'TS'])
+const CODE_PREFIX = new Set(['OP', 'EB', 'ST', 'PRB', 'DP', 'GC', 'TS', 'PEB'])
 const GENERIC = new Set([
   'the', 'and', 'for', 'with', 'from', 'vol', 'volume', 'set', 'pack', 'packs', 'box', 'case',
   'display', 'booster', 'extra', 'bundle', 'deck', 'decks', 'starter', 'collection', 'premium',

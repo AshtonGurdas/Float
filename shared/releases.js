@@ -23,7 +23,14 @@ export function shiftDate(iso, days) {
 }
 
 function plain(value) {
-  return String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  return String(value || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function httpsUrl(value) {
@@ -297,6 +304,275 @@ export function mergeReleases(primary, extra) {
     rows.push(row)
   }
   return rows
+}
+
+const MONTHS = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+}
+
+function isoDate(year, month, day) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+// "April 30, 2027" is exact. "Mid November 2026" is an estimate anchored on a day in that window.
+export function shipDate(phrase) {
+  const text = plain(phrase)
+  const exact = text.match(/\b([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\b/)
+  if (exact && MONTHS[exact[1].toLowerCase()]) {
+    const day = Number(exact[2])
+    const month = MONTHS[exact[1].toLowerCase()]
+    if (day >= 1 && day <= 31) return { iso: isoDate(Number(exact[3]), month, day), label: text }
+  }
+  const fuzzy = text.match(/\b(?:(early|mid|late)(?:\s+to\s+(early|mid|late))?\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})\b/i)
+  if (!fuzzy || !MONTHS[fuzzy[3].toLowerCase()]) return null
+  const start = (fuzzy[1] || '').toLowerCase()
+  const end = (fuzzy[2] || '').toLowerCase()
+  const span = `${start} ${end}`.trim()
+  let day = 1
+  if (span === 'mid late') day = 20
+  else if (span === 'early mid') day = 10
+  else if (start === 'early') day = 5
+  else if (start === 'mid') day = 15
+  else if (start === 'late') day = 25
+  return { iso: isoDate(Number(fuzzy[4]), MONTHS[fuzzy[3].toLowerCase()], day), label: text }
+}
+
+function releaseRow(fields, today) {
+  return {
+    productId: null,
+    name: fields.name,
+    game: fields.game,
+    gameName: fields.gameName,
+    setName: fields.setName,
+    abbreviation: fields.abbreviation || null,
+    releasedOn: fields.releasedOn,
+    status: fields.releasedOn >= today ? 'coming' : 'out',
+    imageUrl: fields.imageUrl || null,
+    url: fields.url || null,
+    linkLabel: fields.linkLabel || null,
+    note: fields.note || null,
+  }
+}
+
+function riftboundProducts(setName, item) {
+  const text = plain(item)
+  const lower = text.toLowerCase()
+  if (/booster packs?\s*(&|and)\s*displays?/.test(lower) || /^booster displays?$/.test(lower)) return [`${setName} Booster Display`]
+  if (/^vault bundle$/.test(lower)) return [`${setName} Vault Bundle`]
+  if (/pre-?\s*rift kits?/.test(lower)) return [`${setName} Pre-Rift Kit`]
+  if (/showdown decks?/.test(lower)) return [`${setName} Showdown Decks`]
+  const decks = text.match(/champion decks?(?:\s*:\s*|\s+for\s+)(.+)$/i)
+  if (!decks) return []
+  const people = decks[1].split(/\s*(?:,|&|\band\b)\s*/i).map((name) => name.replace(/^\d+\s*/, '').trim()).filter((name) => {
+    return name && /[a-z]/i.test(name) && name.length < 32
+  })
+  if (people.length === 1) return [`${setName} Champion Deck: ${people[0]}`]
+  if (people.length > 1) {
+    const last = people[people.length - 1]
+    return [`${setName} Champion Decks: ${people.slice(0, -1).join(', ')} and ${last}`]
+  }
+  return [`${setName} Champion Decks`]
+}
+
+export function riftboundAnnouncementRows(html, pageUrl, today, earliest) {
+  const rows = []
+  for (const part of String(html || '').split(/<h2[^>]*>/i).slice(1)) {
+    const heading = plain(part.split(/<\/h2>/i)[0])
+    const setMatch = heading.match(/^set\s+\d+\s*:\s*(.+)$/i)
+    if (!setMatch) continue
+    const setName = plain(setMatch[1])
+    if (!setName) continue
+    const found = plain(part).match(/\bRelease\s*:\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})/i)
+    const release = shipDate(found?.[1] || '')
+    if (!release || release.iso < earliest) continue
+    const code = plain(part).match(/3-Letter Code\s*:?\s*([A-Z0-9]{2,5})\b/i)?.[1] || null
+    const list = (part.split(/products coming in/i)[1] || '').split(/<\/ul>/i)[0]
+    const names = []
+    for (const item of list.matchAll(/<li>([\s\S]*?)<\/li>/gi)) names.push(...riftboundProducts(setName, item[1]))
+    const products = names.length ? names : [setName]
+    const note = names.length ? 'Announced by Riot.' : 'Announced by Riot. Individual products are not listed yet.'
+    for (const name of products) {
+      rows.push(releaseRow({
+        name,
+        game: 'riftbound',
+        gameName: 'Riftbound',
+        setName,
+        abbreviation: code,
+        releasedOn: release.iso,
+        url: pageUrl,
+        linkLabel: 'Riot',
+        note,
+      }, today))
+    }
+  }
+  return rows
+}
+
+function readable(value) {
+  const small = new Set(['of', 'and', 'the', 'for'])
+  return plain(value).split(' ').map((word, index) => {
+    const letters = word.replace(/[^A-Za-z]/g, '')
+    if (!letters || letters !== letters.toUpperCase() || letters.length < 2) return word
+    const lower = letters.toLowerCase()
+    const cased = index > 0 && small.has(lower) ? lower : lower.charAt(0).toUpperCase() + lower.slice(1)
+    return word.replace(letters, cased)
+  }).join(' ')
+}
+
+function onePieceName(title) {
+  const code = codesIn(title)[0] || null
+  const bare = plain(title).replace(/\s*\[[^\]]+\]\s*/g, ' ').replace(/\s+/g, ' ').trim()
+  if (/\b(sleeve|sleeves|playmat|binder|portfolio|toploader|deck box)\b/i.test(bare)) return null
+  const pack = /\bbooster pack\b|\bextra booster\b/i.test(bare) && !/\bbox\b|\bdisplay\b|\bcase\b/i.test(bare)
+  if (pack) {
+    const setName = readable(bare)
+      .replace(/^(Premium\s+)?(Extra\s+)?Booster Pack\s*[-–—:]+\s*/i, '')
+      .replace(/^(Premium\s+)?Extra Booster\s*[-–—:]+\s*/i, '')
+      .replace(/^[-–—\s]+|[-–—\s]+$/g, '')
+      .trim()
+    if (!setName) return null
+    return { name: `${setName} Booster`, setName, code }
+  }
+  if (!keepProduct(bare) && !/anniversary/i.test(bare)) return null
+  const name = readable(bare)
+  return { name, setName: name, code }
+}
+
+export function onePieceProductRows(html, today, earliest) {
+  const rows = []
+  const seen = new Set()
+  const pattern = /<a\b([^>]*\s)class="linkListColItem"([^>]*)>([\s\S]*?)<\/a>/gi
+  for (const match of String(html || '').matchAll(pattern)) {
+    const block = match[3]
+    const title = plain(block.match(/linkListColTitle">([^<]+)/)?.[1])
+    const releasedOn = block.match(/datetime="(\d{4}-\d{2}-\d{2})"/)?.[1]
+    if (!title || !releasedOn || releasedOn < earliest) continue
+    const shaped = onePieceName(title)
+    if (!shaped) continue
+    const key = `${shaped.name}|${releasedOn}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const href = `${match[1]} ${match[2]}`.match(/href="([^"]+)"/)?.[1]
+    let url = 'https://en.onepiece-cardgame.com/products/'
+    if (href) {
+      try { url = new URL(href, 'https://en.onepiece-cardgame.com/').href } catch { /* keep the index */ }
+    }
+    const src = block.match(/data-src="([^"]+)"/)?.[1]
+    let imageUrl = null
+    if (src && !/img_thumbnail|img_noimage/i.test(src)) {
+      try {
+        const picture = new URL(src, 'https://en.onepiece-cardgame.com/').href.split('?')[0]
+        if (picture.startsWith('https://')) imageUrl = picture
+      } catch { /* letter fallback */ }
+    }
+    rows.push(releaseRow({
+      name: shaped.name,
+      game: 'onepiece',
+      gameName: 'One Piece',
+      setName: shaped.setName,
+      abbreviation: shaped.code,
+      releasedOn,
+      imageUrl,
+      url,
+      linkLabel: 'One Piece',
+      note: 'Official release date.',
+    }, today))
+  }
+  return rows
+}
+
+export function pokemonArticleRows(html, pageUrl, today, earliest) {
+  const rows = []
+  const seen = new Set()
+  for (const part of String(html || '').split(/<h2[^>]*>/i).slice(1)) {
+    const heading = plain(part.split(/<\/h2>/i)[0])
+    if (!/pok[eé]mon tcg/i.test(heading)) continue
+    const found = plain(part).match(/\bAvailable\s*:?\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})/i)
+    const available = shipDate(found?.[1] || '')
+    if (!available || available.iso < earliest) continue
+    const name = heading.replace(/^Pok[eé]mon TCG:\s*/i, '').trim()
+    if (!keepProduct(name)) continue
+    const key = `${name}|${available.iso}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const center = /pok[eé]mon center/i.test(name)
+    const image = part.match(/src="(https:\/\/[^"]+)"/i)?.[1]?.split('?')[0] || null
+    rows.push({
+      channel: center ? 'center' : 'catalog',
+      ...releaseRow({
+        name,
+        game: 'pokemon',
+        gameName: 'Pokémon',
+        setName: center ? 'Pokémon Center' : name,
+        releasedOn: available.iso,
+        imageUrl: image && image.startsWith('https://') ? image : null,
+        url: pageUrl,
+        linkLabel: center ? 'Pokémon Center' : 'Pokémon',
+        note: center ? 'Pokémon Center product.' : 'Official product date.',
+      }, today),
+    })
+  }
+  return rows
+}
+
+const CENTER_URL = 'https://support.pokemoncenter.com/hc/en-us/articles/4407702295572-Estimated-Preorder-Release-Dates'
+
+export function pokemonCenterRows(html, today, earliest) {
+  const rows = []
+  const seen = new Set()
+  for (const tableRow of String(html || '').matchAll(/<tr[\s\S]*?<\/tr>/gi)) {
+    const cells = [...tableRow[0].matchAll(/<td[\s\S]*?<\/td>/gi)].map((cell) => cell[0])
+    if (cells.length < 3) continue
+    const items = [...cells[0].matchAll(/<li[\s\S]*?<\/li>/gi)].map((item) => plain(item[0]))
+    const names = items.length ? items : [plain(cells[0])].filter(Boolean)
+    const region = plain(cells[1])
+    const when = plain(cells[2])
+    const ship = shipDate(when)
+    if (!ship || ship.iso < earliest) continue
+    for (const raw of names) {
+      if (!/pok[eé]mon tcg/i.test(raw)) continue
+      if (/\b(sleeve|sleeves|playmat|binder|portfolio|toploader|deck box|plush)\b/i.test(raw)) continue
+      const name = raw.replace(/^Pok[eé]mon TCG:\s*/i, '').trim()
+      if (!name) continue
+      const key = `${name}|${ship.iso}|${when}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push({
+        channel: 'center',
+        ...releaseRow({
+          name,
+          game: 'pokemon',
+          gameName: 'Pokémon',
+          setName: 'Pokémon Center',
+          releasedOn: ship.iso,
+          url: CENTER_URL,
+          linkLabel: 'Pokémon Center',
+          note: `Pokémon Center preorder. Estimated ship: ${when}.${region ? ` ${region}.` : ''} It can move.`,
+        }, today),
+      })
+    }
+  }
+  return rows
+}
+
+export function catalogRows(rows) {
+  return (rows || []).filter((row) => row.channel !== 'center').map(({ channel, ...row }) => row)
+}
+
+export function centerRows(rows) {
+  return (rows || []).filter((row) => row.channel === 'center').map(({ channel, ...row }) => row)
+}
+
+export function addCenterRows(rows, extra) {
+  const next = [...(rows || [])]
+  for (const row of extra || []) {
+    const same = next.some((existing) => {
+      return existing.name === row.name && existing.releasedOn === row.releasedOn && existing.note === row.note
+    })
+    if (!same) next.push(row)
+  }
+  return next
 }
 
 export function sortReleases(rows) {

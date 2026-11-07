@@ -1,12 +1,25 @@
 import { findPicture } from '../shared/art.js'
-import { RELEASE_GAMES, RECENT_DAYS, collapseVariants, distributorRows, mergeReleases, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
+import { RELEASE_GAMES, RECENT_DAYS, addCenterRows, catalogRows, centerRows, collapseVariants, distributorRows, mergeReleases, onePieceProductRows, pokemonArticleRows, pokemonCenterRows, riftboundAnnouncementRows, rowsForGroup, shiftDate, sortReleases } from '../shared/releases.js'
 import { loadArt } from './art.js'
 import { sleep, tcg } from './tcg.js'
 
 const DISTRIBUTOR = 'https://ca.universaldist.com/api/v1/en/preorderproducts?limit=2000'
 const STAMP_URL = 'https://tcgcsv.com/last-updated.txt'
 const TCG_CACHE_MS = 26 * 60 * 60 * 1000
+const OFFICIAL_CACHE_MS = 60 * 60 * 1000
+const PAGE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+const ONE_PIECE_PAGES = [
+  'https://en.onepiece-cardgame.com/products/?subcategory=all',
+  'https://en.onepiece-cardgame.com/products/?subcategory=boosters',
+  'https://en.onepiece-cardgame.com/products/?subcategory=decks',
+  'https://en.onepiece-cardgame.com/products/?subcategory=others',
+]
+const RIOT_NEWS = 'https://playriftbound.com/en-us/news/announcements/'
+const RIOT_SEED = 'https://playriftbound.com/en-us/news/announcements/products-and-sets-into-2027/'
+const POKEMON_NEWS = 'https://www.pokemon.com/us/pokemon-news'
+const CENTER_ARTICLE = 'https://support.pokemoncenter.com/api/v2/help_center/en-us/articles/4407702295572.json'
 let cache = null
+let officialCache = null
 let pendingTcg = null
 
 function vancouverToday() {
@@ -89,6 +102,76 @@ async function distributorFeed() {
   return Array.isArray(payload) ? payload : []
 }
 
+async function page(url, accept = 'text/html') {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': PAGE_UA, Accept: accept },
+    signal: AbortSignal.timeout(12000),
+  })
+  if (!response.ok) throw new Error(`${response.status} for ${url}`)
+  return response.text()
+}
+
+function riotLinks(html) {
+  const links = new Set([RIOT_SEED])
+  for (const match of String(html || '').matchAll(/\/en-us\/news\/announcements\/([a-z0-9-]+)\/?/gi)) {
+    const slug = match[1]
+    if (/faq|rules|errata|changelog|patch|drawing|ban-list/.test(slug)) continue
+    links.add(`https://playriftbound.com/en-us/news/announcements/${slug}/`)
+  }
+  return [...links].slice(0, 8)
+}
+
+function pokemonLinks(html) {
+  const links = new Set()
+  for (const match of String(html || '').matchAll(/href="(\/us\/news\/[^"]+)"/gi)) {
+    if (!/product-release/i.test(match[1])) continue
+    links.add(new URL(match[1], 'https://www.pokemon.com').href)
+  }
+  return [...links].slice(0, 4)
+}
+
+async function loadOfficial(today, earliest) {
+  const [onePiecePages, riotNews, pokemonNews, centerArticle] = await Promise.all([
+    mapLimit(ONE_PIECE_PAGES, 4, async (url) => page(url).catch(() => '')),
+    page(RIOT_NEWS).catch(() => ''),
+    page(POKEMON_NEWS).catch(() => ''),
+    page(CENTER_ARTICLE, 'application/json').catch(() => ''),
+  ])
+  const riotPages = await mapLimit(riotLinks(riotNews), 4, async (url) => {
+    const html = await page(url).catch(() => '')
+    return riftboundAnnouncementRows(html, url, today, earliest)
+  })
+  const pokemonPages = await mapLimit(pokemonLinks(pokemonNews), 4, async (url) => {
+    const html = await page(url).catch(() => '')
+    return pokemonArticleRows(html, url, today, earliest)
+  })
+  let centerHtml = ''
+  try {
+    const payload = JSON.parse(centerArticle)
+    centerHtml = payload?.article?.body || ''
+  } catch { /* the support article did not parse */ }
+  const found = [
+    ...onePiecePages.flatMap((html) => onePieceProductRows(html, today, earliest)),
+    ...riotPages.flat(),
+    ...pokemonPages.flat(),
+    ...pokemonCenterRows(centerHtml, today, earliest),
+  ]
+  return found
+}
+
+async function officialFeed(today, earliest) {
+  if (officialCache && officialCache.today === today && Date.now() - officialCache.at < OFFICIAL_CACHE_MS) {
+    return officialCache.rows
+  }
+  try {
+    const rows = await loadOfficial(today, earliest)
+    officialCache = { at: Date.now(), today, rows }
+    return rows
+  } catch {
+    return officialCache?.rows || []
+  }
+}
+
 export async function listReleases() {
   const today = vancouverToday()
   const earliest = shiftDate(today, -RECENT_DAYS)
@@ -102,7 +185,7 @@ export async function listReleases() {
       pendingTcg = null
     })
   }
-  const [tcg, art, distributor] = await Promise.all([
+  const [tcg, art, distributor, official] = await Promise.all([
     tcgFresh
       ? Promise.resolve({ rows: cache.tcgRows, failed: 0 })
       : pendingTcg.catch((error) => {
@@ -111,9 +194,15 @@ export async function listReleases() {
         }),
     loadArt().catch(() => null),
     distributorFeed().then((rows) => ({ ok: true, rows })).catch(() => ({ ok: false, rows: [] })),
+    officialFeed(today, earliest).catch(() => officialCache?.rows || []),
   ])
   const udRows = distributor.ok ? distributor.rows : (cache?.udRows || [])
-  const products = collapseVariants(sortReleases(mergeReleases(tcg.rows, distributorRows(udRows, today, earliest)))).map((row) => {
+  const announced = catalogRows(official)
+  const center = centerRows(official)
+  const products = collapseVariants(sortReleases(addCenterRows(
+    mergeReleases(tcg.rows, [...distributorRows(udRows, today, earliest), ...announced]),
+    center,
+  ))).map((row) => {
     if (row.imageUrl) return row
     const imageUrl = findPicture(art, row)
     return imageUrl ? { ...row, imageUrl } : row
