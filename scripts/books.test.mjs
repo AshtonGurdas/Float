@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allocateFees, averageCosts, costGroupKey, lineCash, monthBounds, monthNets, openEstimate, positions, realized, saleTake, stillArriving, summarize, unitForTotal } from '../shared/books.js'
+import { allocateFees, averageCosts, buyerPortion, costGroupKey, lineCash, lineCashCents, monthBounds, monthNets, openEstimate, positions, realized, saleTake, stillArriving, summarize, unitForTotal } from '../shared/books.js'
 import { lotMarket, toCad } from '../shared/market.js'
 
 function entry(overrides) {
@@ -202,6 +202,33 @@ test('a sold purchase leaves the arrival calendar and a partial sale keeps what 
   const undated = entry({ id: 'loose', title: 'No date', quantity: 1 })
   const rows = stillArriving([sold, refund, kept, half, undated])
   assert.deepEqual(rows.map((item) => [item.entry.id, item.remaining]), [['kept', 1]])
+})
+
+test('one buyer can take part of a sale and the money still adds up', () => {
+  const sale = entry({ id: 'sale', direction: 'in', quantity: 2, unitAmount: 40, fees: 0, occurredOn: '2026-11-05', lotId: 'posters' })
+  const whole = buyerPortion(sale, 2)
+  assert.equal(whole.rest, null)
+  assert.equal(whole.unitAmount, 40)
+  assert.equal(whole.cents, 8000)
+  const half = buyerPortion(sale, 1)
+  assert.equal(half.cents, 4000)
+  assert.equal(half.rest.cents, 4000)
+  const buy = entry({ id: 'posters', quantity: 2, unitAmount: 20, fees: 0 })
+  const first = entry({ direction: 'in', quantity: half.quantity, unitAmount: half.unitAmount, fees: half.fees, lotId: 'posters' })
+  const second = entry({ direction: 'in', quantity: half.rest.quantity, unitAmount: half.rest.unitAmount, fees: half.rest.fees, lotId: 'posters' })
+  assert.equal(lineCash(first) + lineCash(second), 80)
+  assert.equal(realized([buy, first, second]).total, realized([buy, sale]).total)
+  const uneven = entry({ direction: 'in', quantity: 2, unitAmount: 40, fees: 5 })
+  const cut = buyerPortion(uneven, 1)
+  assert.equal(cut.cents + cut.rest.cents, lineCashCents(uneven))
+  assert.equal(lineCashCents(entry({ direction: 'in', quantity: cut.quantity, unitAmount: cut.unitAmount, fees: cut.fees })), cut.cents)
+  assert.equal(lineCashCents(entry({ direction: 'in', quantity: cut.rest.quantity, unitAmount: cut.rest.unitAmount, fees: cut.rest.fees })), cut.rest.cents)
+  const tin = entry({ direction: 'in', quantity: 30, unitAmount: unitForTotal(743, 30), fees: 0 })
+  const all = buyerPortion(tin, 30)
+  assert.equal(all.rest, null)
+  assert.equal(all.unitAmount, tin.unitAmount)
+  assert.equal(buyerPortion(sale, 0), null)
+  assert.equal(buyerPortion(sale, 3), null)
 })
 
 test('a total sale price stays exact after it is split across the quantity', () => {

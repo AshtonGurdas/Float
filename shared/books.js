@@ -65,6 +65,36 @@ export function lineCash(entry) {
   return lineCashCents(entry) / 100
 }
 
+export function buyerPortion(entry, quantity) {
+  const qty = Number(entry.quantity)
+  const take = Number(quantity)
+  const total = lineCashCents(entry)
+  if (!(qty > 0) || !(take > 0) || take - qty > 0.0001) return null
+  const restQty = Math.round((qty - take) * 1000) / 1000
+  if (restQty <= 0) {
+    return {
+      quantity: qty,
+      cents: total,
+      unitAmount: Number(entry.unitAmount),
+      fees: Number(entry.fees) || 0,
+      rest: null,
+    }
+  }
+  const taken = Math.round((total * take) / qty)
+  return {
+    quantity: take,
+    cents: taken,
+    unitAmount: unitForTotal(taken / 100, take),
+    fees: 0,
+    rest: {
+      quantity: restQty,
+      cents: total - taken,
+      unitAmount: unitForTotal((total - taken) / 100, restQty),
+      fees: 0,
+    },
+  }
+}
+
 function inWindow(entry, start, end) {
   if (start && entry.occurredOn < start) return false
   if (end && entry.occurredOn > end) return false

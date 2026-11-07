@@ -41,6 +41,14 @@ export function unitForTotal(total: number, quantity: number): number
 export function allocateFees(weights: number[], fee: number): number[]
 export function lineCashCents(entry: Entry): number
 export function lineCash(entry: Entry): number
+export type SalePortion = {
+  quantity: number
+  cents: number
+  unitAmount: number
+  fees: number
+  rest: { quantity: number; cents: number; unitAmount: number; fees: number } | null
+}
+export function buyerPortion(entry: Entry, quantity: number): SalePortion | null
 export function summarize(entries: Entry[], start?: string, end?: string): { spent: number; made: number; net: number }
 export function positions(entries: Entry[]): Lot[]
 export type Arrival = { entry: Entry; remaining: number }

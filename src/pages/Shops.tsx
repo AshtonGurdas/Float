@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { lineCash, type Entry } from '../lib/books.ts'
-import { money, prettyDate } from '../lib/format.ts'
+import { buyerPortion, lineCash, type Entry, type SalePortion } from '../lib/books.ts'
+import { money, parseQty, prettyDate } from '../lib/format.ts'
 import { entryFields, type Customer, type Shop, type ShopAgain, type ShopLegit, type ShopQuality, type ShopShipping } from '../lib/rows.ts'
 import { useShop } from '../store.tsx'
 
@@ -72,7 +72,7 @@ function comesBack(regular: boolean, sales: number) {
 }
 
 export function ShopsPage() {
-  const { shops, customers, entries, saveShop, deleteShop, saveCustomer, deleteCustomer, saveEntry } = useShop()
+  const { shops, customers, entries, saveShop, deleteShop, saveCustomer, deleteCustomer, saveOrder } = useShop()
   const [section, setSection] = useState<'stores' | 'customers'>('stores')
   const [storeFilter, setStoreFilter] = useState<'all' | 'yes' | 'no'>('all')
   const [customerFilter, setCustomerFilter] = useState<'all' | 'back' | 'fresh'>('all')
@@ -228,11 +228,40 @@ export function ShopsPage() {
     }
   }
 
-  async function linkSale(entry: Entry, customerId: string | null) {
+  async function giveSale(entry: Entry, customerId: string | null, quantity: number) {
     setSaving(true)
     setError(null)
     try {
-      await saveEntry({ ...entryFields(entry), customerId }, entry.id)
+      const fields = entryFields(entry)
+      if (customerId == null) {
+        await saveOrder([{ id: entry.id, input: { ...fields, customerId: null } }])
+        return
+      }
+      const portion = buyerPortion(entry, quantity)
+      if (!portion) throw new Error('Choose how many they bought.')
+      const taken = {
+        ...fields,
+        quantity: portion.quantity,
+        unitAmount: portion.unitAmount,
+        fees: portion.fees,
+        customerId,
+      }
+      if (!portion.rest) {
+        await saveOrder([{ id: entry.id, input: taken }])
+        return
+      }
+      await saveOrder([
+        { id: entry.id, input: taken },
+        {
+          input: {
+            ...fields,
+            quantity: portion.rest.quantity,
+            unitAmount: portion.rest.unitAmount,
+            fees: portion.rest.fees,
+            customerId: null,
+          },
+        },
+      ])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update that sale.')
     } finally {
@@ -438,7 +467,7 @@ export function ShopsPage() {
                 sales={buyerSales(entries, editingCustomer.id)}
                 openSales={openSales}
                 saving={saving}
-                onLink={linkSale}
+                onGive={giveSale}
               />
             ) : (
               <p className="quiet">After you save, you can attach sales you already logged.</p>
@@ -502,7 +531,17 @@ function ShopOrders({ shopId }: { shopId: string }) {
 }
 
 function saleLabel(entry: Entry) {
-  return `${prettyDate(entry.occurredOn)} · ${entry.title} · ${money(lineCash(entry))}`
+  const count = entry.quantity === 1 ? '' : `${entry.quantity} pieces · `
+  return `${prettyDate(entry.occurredOn)} · ${entry.title} · ${count}${money(lineCash(entry))}`
+}
+
+function shareHint(portion: SalePortion) {
+  const got = `They got ${money(portion.cents / 100)}`
+  if (!portion.rest) return `${got}.`
+  const other = portion.rest.quantity === 1
+    ? 'The other piece stays unassigned'
+    : `The other ${portion.rest.quantity} pieces stay unassigned`
+  return `${got}. ${other}, ${money(portion.rest.cents / 100)}.`
 }
 
 function CustomerSales({
@@ -510,46 +549,120 @@ function CustomerSales({
   sales,
   openSales,
   saving,
-  onLink,
+  onGive,
 }: {
   customerId: string
   sales: Entry[]
   openSales: Entry[]
   saving: boolean
-  onLink: (entry: Entry, customerId: string | null) => void
+  onGive: (entry: Entry, customerId: string | null, quantity: number) => void
 }) {
+  const [saleId, setSaleId] = useState('')
+  const [countText, setCountText] = useState('1')
+  const picked = openSales.find((sale) => sale.id === saleId) || null
+  const count = parseQty(countText)
+  const portion = picked && count ? buyerPortion(picked, count) : null
+
   return (
     <div>
       {sales.length === 0 ? <p className="quiet">No sales linked yet.</p> : (
         <div className="ledger">
           {sales.map((entry) => (
-            <div key={entry.id} className="shop-order">
-              <p className="row-sub">{saleLabel(entry)}</p>
-              <button type="button" className="text-btn" onClick={() => onLink(entry, null)} disabled={saving}>Not this buyer</button>
-            </div>
+            <LinkedSale key={entry.id} entry={entry} customerId={customerId} saving={saving} onGive={onGive} />
           ))}
         </div>
       )}
       {openSales.length > 0 ? (
-        <label className="field">
-          Attach a past sale
-          <select
-            value=""
-            onChange={(event) => {
-              const entry = openSales.find((sale) => sale.id === event.target.value)
-              if (entry) onLink(entry, customerId)
-            }}
-            disabled={saving}
-          >
-            <option value="">Choose a sale with no buyer</option>
-            {openSales.map((entry) => (
-              <option key={entry.id} value={entry.id}>{saleLabel(entry)}</option>
-            ))}
-          </select>
-        </label>
+        <div>
+          <label className="field">
+            Attach a past sale
+            <select
+              value={picked ? picked.id : ''}
+              onChange={(event) => {
+                const entry = openSales.find((sale) => sale.id === event.target.value)
+                if (!entry) {
+                  setSaleId('')
+                  return
+                }
+                if (entry.quantity <= 1) {
+                  setSaleId('')
+                  onGive(entry, customerId, entry.quantity)
+                  return
+                }
+                setSaleId(entry.id)
+                setCountText('1')
+              }}
+              disabled={saving}
+            >
+              <option value="">Choose a sale with no buyer</option>
+              {openSales.map((entry) => (
+                <option key={entry.id} value={entry.id}>{saleLabel(entry)}</option>
+              ))}
+            </select>
+          </label>
+          {picked && picked.quantity > 1 ? (
+            <div>
+              <label className="field">
+                How many they bought
+                <input
+                  inputMode="decimal"
+                  value={countText}
+                  onChange={(event) => setCountText(event.target.value)}
+                />
+                <span className="field-hint">{portion ? shareHint(portion) : 'Use a quantity from this sale.'}</span>
+              </label>
+              <button
+                type="button"
+                className="btn"
+                disabled={saving || !portion}
+                onClick={() => {
+                  if (!portion) return
+                  onGive(picked, customerId, portion.quantity)
+                  setSaleId('')
+                  setCountText('1')
+                }}
+              >
+                Attach
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : (
         <p className="quiet">Sales you log without a buyer show up here to attach.</p>
       )}
+    </div>
+  )
+}
+
+function LinkedSale({
+  entry,
+  customerId,
+  saving,
+  onGive,
+}: {
+  entry: Entry
+  customerId: string
+  saving: boolean
+  onGive: (entry: Entry, customerId: string | null, quantity: number) => void
+}) {
+  const [countText, setCountText] = useState(String(entry.quantity))
+  const count = parseQty(countText)
+  const portion = count ? buyerPortion(entry, count) : null
+  const changed = !!portion && portion.quantity !== entry.quantity
+  return (
+    <div className="shop-order">
+      <p className="row-sub">{saleLabel(entry)}</p>
+      {entry.quantity > 1 ? (
+        <label className="field">
+          How many this buyer got
+          <input inputMode="decimal" value={countText} onChange={(event) => setCountText(event.target.value)} />
+          {portion ? <span className="field-hint">{shareHint(portion)}</span> : <span className="field-hint">Use a quantity from this sale.</span>}
+        </label>
+      ) : null}
+      {changed && portion ? (
+        <button type="button" className="btn" onClick={() => onGive(entry, customerId, portion.quantity)} disabled={saving}>Update sale</button>
+      ) : null}
+      <button type="button" className="text-btn" onClick={() => onGive(entry, null, entry.quantity)} disabled={saving}>Not this buyer</button>
     </div>
   )
 }
