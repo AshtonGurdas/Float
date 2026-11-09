@@ -144,7 +144,7 @@ export function InventoryPage() {
       {view === 'sold' && closed.length === 0 ? (
         <div className="empty">
           <p>Nothing sold yet.</p>
-          <p>Sell from a lot on hand. Once it is gone, it stays in this section.</p>
+          <p>Sell from a lot on hand. Undo on a sold lot puts it back.</p>
         </div>
       ) : null}
       {view === 'sold' && closed.length > 0 ? (
@@ -158,6 +158,7 @@ export function InventoryPage() {
               usdCad={usdCad}
               rateState={cad.state}
               onTrack={() => setTrackingLot(lot)}
+              onRestored={() => setView('list')}
             />
           ))}
         </div>
@@ -279,8 +280,11 @@ function countText(value: number) {
   return String(Math.round(value * 1000) / 1000)
 }
 
-function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lot: Lot; quote: Quote | undefined; photo?: string; average?: AverageCost; usdCad: number | null; rateState: 'loading' | 'ready' | 'error'; onTrack: () => void }) {
-  const { openDraft } = useShop()
+function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack, onRestored }: { lot: Lot; quote: Quote | undefined; photo?: string; average?: AverageCost; usdCad: number | null; rateState: 'loading' | 'ready' | 'error'; onTrack: () => void; onRestored?: () => void }) {
+  const { openDraft, deleteEntry } = useShop()
+  const [confirmUndo, setConfirmUndo] = useState(false)
+  const [undoing, setUndoing] = useState(false)
+  const [undoError, setUndoError] = useState<string | null>(null)
   const each = heldMarket(lot, quote)
   const eachCad = each == null || usdCad == null ? null : toCad(each, usdCad)
   const openValue = eachCad == null ? null : roundMoney(eachCad * lot.remaining - lot.costLeft)
@@ -290,6 +294,26 @@ function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lo
   const bought = roundMoney(lot.unitCost * Number(lot.buy.quantity))
   const showAverage = !soldOut && !!average && (average.lines > 1 || average.fees > 0)
   const image = quote?.imageUrl || photo || null
+
+  async function undoSales() {
+    setUndoing(true)
+    setUndoError(null)
+    try {
+      for (const sale of lot.sales) {
+        await Promise.race([
+          deleteEntry(sale.id),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error('Undoing is taking too long. Check your connection and try again.')), 15000)
+          }),
+        ])
+      }
+      onRestored?.()
+    } catch (err) {
+      setUndoError(err instanceof Error ? err.message : 'Could not undo that sale.')
+      setUndoing(false)
+    }
+  }
+
   return (
     <article className="lot">
       <Thumb src={image} name={lot.buy.title} />
@@ -345,6 +369,17 @@ function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lo
         )}
       </div>
       <div className="lot-actions">
+        {soldOut && lot.sales.length > 0 ? (
+          confirmUndo ? (
+            <div className="confirm-row">
+              <span>Put {countText(lot.soldQty)} back on hand? The sale comes off the books.</span>
+              <button type="button" className="btn" onClick={undoSales} disabled={undoing}>{undoing ? 'Undoing…' : 'Undo'}</button>
+              <button type="button" className="btn ghost" onClick={() => setConfirmUndo(false)} disabled={undoing}>Keep sold</button>
+            </div>
+          ) : (
+            <button type="button" className="btn" onClick={() => setConfirmUndo(true)}>Undo</button>
+          )
+        ) : null}
         <button type="button" className="btn ghost" onClick={onTrack}>
           {lot.buy.trackingNumber ? 'Open tracking' : 'Add tracking'}
         </button>
@@ -352,6 +387,7 @@ function LotRow({ lot, quote, photo, average, usdCad, rateState, onTrack }: { lo
           <button type="button" className="btn" onClick={() => openDraft({ mode: 'sell', buy: lot.buy })}>Sell</button>
         ) : null}
         <button type="button" className="btn ghost" onClick={() => openDraft({ mode: 'edit', entry: lot.buy })}>Edit</button>
+        {undoError ? <p className="error-text">{undoError}</p> : null}
       </div>
     </article>
   )
